@@ -328,7 +328,58 @@ class CanvasView:
     def _connection_points(
         self, connection: Connection, sx: float, sy: float, tx: float, ty: float
     ) -> tuple[Sequence[float], Dict[str, float | bool]]:
-        if getattr(connection, "style", DEFAULT_CONNECTION_STYLE) != "rounded":
+        style = getattr(connection, "style", DEFAULT_CONNECTION_STYLE)
+
+        if style == "elbow":
+            dx = tx - sx
+            dy = ty - sy
+            via_horizontal_first = abs(dx) >= abs(dy)
+            if via_horizontal_first:
+                corner = (tx, sy)
+                start_dir = self._anchor_direction(
+                    getattr(connection, "from_anchor", None),
+                    (1.0 if dx >= 0 else -1.0, 0.0),
+                )
+            else:
+                corner = (sx, ty)
+                start_dir = self._anchor_direction(
+                    getattr(connection, "from_anchor", None),
+                    (0.0, 1.0 if dy >= 0 else -1.0),
+                )
+
+            first_len = abs(corner[0] - sx) + abs(corner[1] - sy)
+            second_len = abs(tx - corner[0]) + abs(ty - corner[1])
+            total_len = max(first_len + second_len, 1.0)
+
+            half = total_len / 2
+            if half <= first_len and first_len:
+                ratio = half / first_len
+                mid_x = sx + (corner[0] - sx) * ratio
+                mid_y = sy + (corner[1] - sy) * ratio
+            else:
+                remain = half - first_len
+                segment_len = max(second_len, 1.0)
+                ratio = remain / segment_len
+                mid_x = corner[0] + (tx - corner[0]) * ratio
+                mid_y = corner[1] + (ty - corner[1]) * ratio
+
+            return (
+                (sx, sy, corner[0], corner[1], tx, ty),
+                {
+                    "smooth": False,
+                    "midpoint_x": mid_x,
+                    "midpoint_y": mid_y,
+                    "normal_x": 0.0,
+                    "normal_y": 0.0,
+                    "length": total_len,
+                    "start_dir": start_dir,
+                    "handle_length": 0.0,
+                    "baseline_mid_x": mid_x,
+                    "baseline_mid_y": mid_y,
+                },
+            )
+
+        if style != "rounded":
             midpoint = ((sx + tx) / 2, (sy + ty) / 2)
             length = math.hypot(tx - sx, ty - sy) or 1.0
             dir_x = (tx - sx) / length

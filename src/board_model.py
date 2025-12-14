@@ -129,7 +129,7 @@ def bulk_update_card_colors(
 
 VALID_CONNECTION_DIRECTIONS = {"start", "end"}
 DEFAULT_CONNECTION_DIRECTION = "end"
-VALID_CONNECTION_STYLES = {"straight", "rounded"}
+VALID_CONNECTION_STYLES = {"straight", "rounded", "elbow"}
 DEFAULT_CONNECTION_STYLE = "straight"
 DEFAULT_CONNECTION_RADIUS = 0.0
 DEFAULT_CONNECTION_CURVATURE = 0.0
