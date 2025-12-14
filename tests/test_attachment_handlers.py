@@ -73,6 +73,21 @@ def test_attach_clipboard_image_rejects_large_payload(monkeypatch, attachments_r
     assert app.cards[1].attachments == []
 
 
+def test_clipboard_missing_xclip_shows_hint(monkeypatch, attachments_root):
+    app = _make_app(attachments_root)
+
+    import PIL.ImageGrab as imagegrab
+
+    monkeypatch.setattr(imagegrab, "grabclipboard", mock.Mock(side_effect=FileNotFoundError("xclip")))
+    showerror = mock.Mock()
+    monkeypatch.setattr(main.messagebox, "showerror", showerror)
+
+    result = app._read_clipboard_image()
+
+    assert result is None
+    showerror.assert_called_once()
+
+
 def test_attach_image_from_file_validates_format(monkeypatch, attachments_root, tmp_path):
     app = _make_app(attachments_root)
     bad_file = tmp_path / "note.txt"
