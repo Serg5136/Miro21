@@ -1068,6 +1068,9 @@ class BoardApp:
         except (binascii.Error, ValueError):
             return False
 
+        if len(payload) > self.max_attachment_bytes:
+            return False
+
         try:
             target_path.write_bytes(payload)
         except OSError:
