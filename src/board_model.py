@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Literal
 
-SCHEMA_VERSION = 4
-SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, SCHEMA_VERSION}
+SCHEMA_VERSION = 5
+SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4, SCHEMA_VERSION}
 
 
 @dataclass
@@ -129,6 +129,10 @@ def bulk_update_card_colors(
 
 VALID_CONNECTION_DIRECTIONS = {"start", "end"}
 DEFAULT_CONNECTION_DIRECTION = "end"
+VALID_CONNECTION_STYLES = {"straight", "rounded"}
+DEFAULT_CONNECTION_STYLE = "straight"
+DEFAULT_CONNECTION_RADIUS = 0.0
+DEFAULT_CONNECTION_CURVATURE = 0.0
 
 
 @dataclass
@@ -141,6 +145,9 @@ class Connection:
     to_id: int
     label: str = ""
     direction: str = DEFAULT_CONNECTION_DIRECTION
+    style: str = DEFAULT_CONNECTION_STYLE
+    radius: float = DEFAULT_CONNECTION_RADIUS
+    curvature: float = DEFAULT_CONNECTION_CURVATURE
 
     from_anchor: str | None = None
     to_anchor: str | None = None
@@ -157,6 +164,9 @@ class Connection:
             "to": self.to_id,
             "label": self.label,
             "direction": self.direction,
+            "style": self.style,
+            "radius": self.radius,
+            "curvature": self.curvature,
         }
         if self.from_anchor is not None:
             payload["from_anchor"] = self.from_anchor
@@ -169,6 +179,21 @@ class Connection:
         if direction in VALID_CONNECTION_DIRECTIONS:
             return direction
         return DEFAULT_CONNECTION_DIRECTION
+
+    @staticmethod
+    def _normalize_style(style: str | None) -> str:
+        if style in VALID_CONNECTION_STYLES:
+            return style
+        return DEFAULT_CONNECTION_STYLE
+
+    @staticmethod
+    def _normalize_float(value: Any, default: float) -> float:
+        if value is None:
+            return default
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
 
     @staticmethod
     def from_primitive(data: Dict[str, Any]) -> "Connection":
@@ -184,6 +209,13 @@ class Connection:
             to_id=to_raw,
             label=data.get("label", ""),
             direction=Connection._normalize_direction(data.get("direction")),
+            style=Connection._normalize_style(data.get("style")),
+            radius=Connection._normalize_float(
+                data.get("radius"), DEFAULT_CONNECTION_RADIUS
+            ),
+            curvature=Connection._normalize_float(
+                data.get("curvature"), DEFAULT_CONNECTION_CURVATURE
+            ),
             from_anchor=data.get("from_anchor"),
             to_anchor=data.get("to_anchor"),
         )
@@ -298,7 +330,11 @@ class BoardData:
             {
               "from": int,
               "to": int,
-              "label": str
+              "label": str,
+              "direction": "start" | "end",
+              "style": "straight" | "rounded",
+              "radius": float,
+              "curvature": float
             }, ...
           ],
           "frames": [
