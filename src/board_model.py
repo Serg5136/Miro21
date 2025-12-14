@@ -155,6 +155,10 @@ class Connection:
     # UI поля (не сериализуются)
     line_id: int | None = None
     label_id: int | None = None
+    start_handle_id: int | None = None
+    end_handle_id: int | None = None
+    radius_handle_id: int | None = None
+    curvature_handle_id: int | None = None
 
     def to_primitive(self) -> Dict[str, Any]:
         """Сериализация связи в dict для JSON."""

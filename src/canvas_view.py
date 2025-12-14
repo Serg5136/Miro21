@@ -330,7 +330,26 @@ class CanvasView:
     ) -> tuple[Sequence[float], Dict[str, float | bool]]:
         if getattr(connection, "style", DEFAULT_CONNECTION_STYLE) != "rounded":
             midpoint = ((sx + tx) / 2, (sy + ty) / 2)
-            return (sx, sy, tx, ty), {"smooth": False, "midpoint_x": midpoint[0], "midpoint_y": midpoint[1]}
+            length = math.hypot(tx - sx, ty - sy) or 1.0
+            dir_x = (tx - sx) / length
+            dir_y = (ty - sy) / length
+            return (
+                (sx, sy, tx, ty),
+                {
+                    "smooth": False,
+                    "midpoint_x": midpoint[0],
+                    "midpoint_y": midpoint[1],
+                    "normal_x": 0.0,
+                    "normal_y": 0.0,
+                    "length": length,
+                    "start_dir": self._anchor_direction(
+                        getattr(connection, "from_anchor", None), (dir_x, dir_y)
+                    ),
+                    "handle_length": 0.0,
+                    "baseline_mid_x": midpoint[0],
+                    "baseline_mid_y": midpoint[1],
+                },
+            )
 
         radius = max(getattr(connection, "radius", DEFAULT_CONNECTION_RADIUS), 0.0)
         curvature = getattr(connection, "curvature", DEFAULT_CONNECTION_CURVATURE)
@@ -366,7 +385,18 @@ class CanvasView:
         coords = self._sample_cubic_bezier((sx, sy), start_ctrl, end_ctrl, (tx, ty), steps=steps)
         mid_x, mid_y = self._bezier_point((sx, sy), start_ctrl, end_ctrl, (tx, ty), 0.5)
 
-        return coords, {"smooth": False, "midpoint_x": mid_x, "midpoint_y": mid_y}
+        return coords, {
+            "smooth": False,
+            "midpoint_x": mid_x,
+            "midpoint_y": mid_y,
+            "normal_x": normal_x,
+            "normal_y": normal_y,
+            "length": length,
+            "start_dir": start_dir,
+            "handle_length": handle_length,
+            "baseline_mid_x": (sx + tx) / 2,
+            "baseline_mid_y": (sy + ty) / 2,
+        }
 
     def _label_position(
         self, coords: Sequence[float], render_info: Dict[str, float | bool]
@@ -380,6 +410,55 @@ class CanvasView:
     def _arrow_for_direction(self, direction: str) -> str:
         return tk.FIRST if direction == "start" else tk.LAST
 
+    def connection_geometry(
+        self, connection: Connection, from_card: Card, to_card: Card
+    ) -> tuple[Sequence[float], Dict[str, float | bool]]:
+        sx, sy, tx, ty = self._connection_anchors(from_card, to_card, connection)
+        coords, render_info = self._connection_points(connection, sx, sy, tx, ty)
+        render_info["start_x"] = sx
+        render_info["start_y"] = sy
+        render_info["end_x"] = tx
+        render_info["end_y"] = ty
+        return coords, render_info
+
+    def connection_handle_positions(
+        self, connection: Connection, from_card: Card, to_card: Card
+    ) -> Dict[str, tuple[float, float]]:
+        coords, render_info = self.connection_geometry(connection, from_card, to_card)
+        _ = coords  # keep for potential future use
+        sx = render_info.get("start_x", from_card.x)
+        sy = render_info.get("start_y", from_card.y)
+        tx = render_info.get("end_x", to_card.x)
+        ty = render_info.get("end_y", to_card.y)
+
+        midpoint_x = render_info.get("baseline_mid_x", (sx + tx) / 2)
+        midpoint_y = render_info.get("baseline_mid_y", (sy + ty) / 2)
+        normal_x = render_info.get("normal_x", 0.0)
+        normal_y = render_info.get("normal_y", 0.0)
+        length = render_info.get("length", math.hypot(tx - sx, ty - sy)) or 1.0
+        start_dir = render_info.get("start_dir", (1.0, 0.0))
+        handle_length = render_info.get("handle_length", 0.0)
+        curvature = getattr(connection, "curvature", DEFAULT_CONNECTION_CURVATURE)
+
+        radius_ctrl = (sx + start_dir[0] * handle_length, sy + start_dir[1] * handle_length)
+        curvature_ctrl = (
+            midpoint_x + normal_x * max(-length / 2, min(curvature, length / 2)),
+            midpoint_y + normal_y * max(-length / 2, min(curvature, length / 2)),
+        )
+
+        return {
+            "start": (sx, sy),
+            "end": (tx, ty),
+            "radius": radius_ctrl,
+            "curvature": curvature_ctrl,
+        }
+
+    def set_connection_hover(self, connection: Connection, hovered: bool) -> None:
+        if not connection.line_id:
+            return
+        width = 3 if hovered else 2
+        self.canvas.itemconfig(connection.line_id, width=width)
+
     def apply_connection_direction(self, connection: Connection) -> None:
         if not connection.line_id:
             return
@@ -387,9 +466,8 @@ class CanvasView:
         self.canvas.itemconfig(connection.line_id, arrow=arrow)
 
     def draw_connection(self, connection: Connection, from_card: Card, to_card: Card) -> None:
-        sx, sy, tx, ty = self._connection_anchors(from_card, to_card, connection)
+        coords, render_info = self.connection_geometry(connection, from_card, to_card)
         arrow = self._arrow_for_direction(connection.direction)
-        coords, render_info = self._connection_points(connection, sx, sy, tx, ty)
         line_kwargs = {
             "arrow": arrow,
             "width": 2,
@@ -429,8 +507,7 @@ class CanvasView:
             to_card = cards.get(conn.to_id)
             if from_card is None or to_card is None:
                 continue
-            sx, sy, tx, ty = self._connection_anchors(from_card, to_card, conn)
-            coords, render_info = self._connection_points(conn, sx, sy, tx, ty)
+            coords, render_info = self.connection_geometry(conn, from_card, to_card)
             if conn.line_id:
                 self.canvas.coords(conn.line_id, *coords)
                 self.apply_connection_direction(conn)

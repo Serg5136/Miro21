@@ -18,6 +18,54 @@ class DragController:
         item_id = item[0] if item else None
         tags = app.canvas.gettags(item_id) if item_id else ()
 
+        if "connection_handle" in tags:
+            conn = app.connection_handle_map.get(item_id) or app.get_connection_from_item(item_id)
+            if conn:
+                app.select_connection(conn)
+                app.drag_data["dragging"] = True
+                app.drag_data["moved"] = False
+                if "connection_handle_start" in tags or "connection_handle_end" in tags:
+                    endpoint = "start" if "connection_handle_start" in tags else "end"
+                    app.drag_data["mode"] = "connection_endpoint"
+                    app.drag_data["connection_edit"] = {
+                        "connection": conn,
+                        "endpoint": endpoint,
+                        "original": {
+                            "from_id": conn.from_id,
+                            "to_id": conn.to_id,
+                            "from_anchor": conn.from_anchor,
+                            "to_anchor": conn.to_anchor,
+                        },
+                    }
+                elif "connection_handle_radius" in tags:
+                    app.drag_data["mode"] = "connection_radius"
+                    from_card = app.cards.get(conn.from_id)
+                    to_card = app.cards.get(conn.to_id)
+                    if from_card and to_card:
+                        _, geom = app.canvas_view.connection_geometry(conn, from_card, to_card)
+                        app.drag_data["connection_edit"] = {
+                            "connection": conn,
+                            "length": geom.get("length", 1.0),
+                            "start": (geom.get("start_x", from_card.x), geom.get("start_y", from_card.y)),
+                            "start_dir": geom.get("start_dir", (1.0, 0.0)),
+                        }
+                elif "connection_handle_curvature" in tags:
+                    app.drag_data["mode"] = "connection_curvature"
+                    from_card = app.cards.get(conn.from_id)
+                    to_card = app.cards.get(conn.to_id)
+                    if from_card and to_card:
+                        _, geom = app.canvas_view.connection_geometry(conn, from_card, to_card)
+                        app.drag_data["connection_edit"] = {
+                            "connection": conn,
+                            "length": geom.get("length", 1.0),
+                            "baseline_mid": (
+                                geom.get("baseline_mid_x", (from_card.x + to_card.x) / 2),
+                                geom.get("baseline_mid_y", (from_card.y + to_card.y) / 2),
+                            ),
+                            "normal": (geom.get("normal_x", 0.0), geom.get("normal_y", 0.0)),
+                        }
+                return "break"
+
         conn = app.get_connection_from_item(item_id)
         if conn is not None:
             app.select_connection(conn)
@@ -150,6 +198,7 @@ class DragController:
         if app.drag_data["temp_line_id"]:
             app.canvas.delete(app.drag_data["temp_line_id"])
         app.drag_data["temp_line_id"] = None
+        app.drag_data["connection_edit"] = None
         app.selection_start = None
         if app.selection_rect_id is not None:
             app.canvas.delete(app.selection_rect_id)
@@ -307,6 +356,75 @@ class DragController:
                     app.drag_data["moved"] = True
                 return
 
+            if mode == "connection_radius":
+                edit_data = app.drag_data.get("connection_edit") or {}
+                conn = edit_data.get("connection")
+                if not conn:
+                    return
+                length = max(1.0, edit_data.get("length", 1.0))
+                start = edit_data.get("start", (cx, cy))
+                dir_x, dir_y = edit_data.get("start_dir", (1.0, 0.0))
+                proj = (cx - start[0]) * dir_x + (cy - start[1]) * dir_y
+                new_radius = max(0.0, min(length * 0.6, proj))
+                conn.radius = new_radius
+                app.canvas_view.update_connection_positions([conn], app.cards)
+                app.show_connection_handles(conn)
+                app.drag_data["moved"] = True
+                return
+
+            if mode == "connection_curvature":
+                edit_data = app.drag_data.get("connection_edit") or {}
+                conn = edit_data.get("connection")
+                if not conn:
+                    return
+                baseline_mid = edit_data.get("baseline_mid", (cx, cy))
+                normal_x, normal_y = edit_data.get("normal", (0.0, 1.0))
+                length = max(1.0, edit_data.get("length", 1.0))
+                offset = (cx - baseline_mid[0]) * normal_x + (cy - baseline_mid[1]) * normal_y
+                offset = max(-length / 2, min(length / 2, offset))
+                conn.curvature = offset
+                app.canvas_view.update_connection_positions([conn], app.cards)
+                app.show_connection_handles(conn)
+                app.drag_data["moved"] = True
+                return
+
+            if mode == "connection_endpoint":
+                edit_data = app.drag_data.get("connection_edit") or {}
+                conn = edit_data.get("connection")
+                endpoint = edit_data.get("endpoint")
+                if not conn or endpoint not in {"start", "end"}:
+                    return
+
+                target_id = None
+                target_anchor = None
+                items = app.canvas.find_overlapping(cx, cy, cx, cy)
+                for it in items:
+                    cid = app.get_card_id_from_item((it,))
+                    if cid is not None:
+                        other_id = conn.to_id if endpoint == "start" else conn.from_id
+                        if cid != other_id:
+                            target_id = cid
+                            target_card = app.cards.get(cid)
+                            if target_card:
+                                target_anchor = app._closest_card_anchor(target_card, cx, cy)
+                        break
+
+                if target_id is None:
+                    return
+
+                if endpoint == "start":
+                    conn.from_id = target_id
+                    conn.from_anchor = target_anchor
+                else:
+                    conn.to_id = target_id
+                    conn.to_anchor = target_anchor
+
+                app.canvas_view.update_connection_positions([conn], app.cards)
+                if app.selected_connection is conn:
+                    app.show_connection_handles(conn)
+                app.drag_data["moved"] = True
+                return
+
             dx = cx - app.drag_data["last_x"]
             dy = cy - app.drag_data["last_y"]
             if dx == 0 and dy == 0:
@@ -431,6 +549,37 @@ class DragController:
             app.drag_data["dragging"] = False
             app.drag_data["mode"] = None
             app.drag_data["resize_attachment"] = None
+            app.drag_data["moved"] = False
+            return
+
+        if mode in {"connection_radius", "connection_curvature"}:
+            if app.drag_data["moved"]:
+                app.push_history()
+            app.drag_data["dragging"] = False
+            app.drag_data["mode"] = None
+            app.drag_data["connection_edit"] = None
+            app.drag_data["moved"] = False
+            return
+
+        if mode == "connection_endpoint":
+            edit_data = app.drag_data.get("connection_edit") or {}
+            conn = edit_data.get("connection")
+            original = edit_data.get("original") or {}
+            invalid_target = conn and conn.from_id == conn.to_id
+            if (not app.drag_data["moved"]) or invalid_target:
+                if conn and original:
+                    conn.from_id = original.get("from_id", conn.from_id)
+                    conn.to_id = original.get("to_id", conn.to_id)
+                    conn.from_anchor = original.get("from_anchor")
+                    conn.to_anchor = original.get("to_anchor")
+                    app.canvas_view.update_connection_positions([conn], app.cards)
+                    app.show_connection_handles(conn)
+            else:
+                app.push_history()
+
+            app.drag_data["dragging"] = False
+            app.drag_data["mode"] = None
+            app.drag_data["connection_edit"] = None
             app.drag_data["moved"] = False
             return
 

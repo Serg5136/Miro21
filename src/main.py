@@ -64,7 +64,7 @@ class BoardApp:
             "last_x": 0,
             "last_y": 0,
             "moved": False,
-            "mode": None,            # "cards", "frame", "resize_card", "resize_frame", "connect_drag"
+            "mode": None,            # "cards", "frame", "resize_card", "resize_frame", "connect_drag", "connection_endpoint", "connection_radius", "connection_curvature"
             "frame_id": None,
             "resize_card_id": None,
             "resize_origin": None,   # (x1, y1) левый верх при ресайзе
@@ -76,10 +76,13 @@ class BoardApp:
             "connect_from_anchor": None,
             "connect_start": None,   # (sx, sy)
             "temp_line_id": None,
+            "connection_edit": None,
         }
 
         # Hover
         self.hover_card_id = None
+        self.hover_connection: ModelConnection | None = None
+        self.connection_handle_map: Dict[int, ModelConnection] = {}
 
         # Режим соединения (кнопкой)
         self.connect_mode = False
@@ -451,6 +454,7 @@ class BoardApp:
         self.push_history()
 
     def _delete_connection(self, connection: ModelConnection) -> None:
+        self.hide_connection_handles(connection)
         self.canvas.delete(connection.line_id)
         if connection.label_id:
             self.canvas.delete(connection.label_id)
@@ -462,6 +466,8 @@ class BoardApp:
             self.selected_connection = None
         if connection is self.context_connection:
             self.context_connection = None
+        if connection is self.hover_connection:
+            self.hover_connection = None
         self.render_selection()
         self.update_controls_state()
     
@@ -669,10 +675,15 @@ class BoardApp:
             self.connections,
             self.selected_connection,
         )
+        if self.selected_connection:
+            self.show_connection_handles(self.selected_connection)
+        else:
+            self.hide_connection_handles()
 
     def clear_connection_selection(self) -> None:
         if self.selected_connection is None:
             return
+        self.hide_connection_handles(self.selected_connection)
         self.selected_connection = None
         self.context_connection = None
         self.render_selection()
@@ -689,6 +700,85 @@ class BoardApp:
         self.context_connection = connection
         self.render_selection()
         self.update_controls_state()
+
+    def _register_connection_handle(self, connection: ModelConnection, handle_id: int) -> None:
+        self.connection_handle_map[handle_id] = connection
+
+    def hide_connection_handles(self, connection: ModelConnection | None = None) -> None:
+        targets = [connection] if connection else list(self.connections)
+        for conn in targets:
+            for hid_attr in ("start_handle_id", "end_handle_id", "radius_handle_id", "curvature_handle_id"):
+                hid = getattr(conn, hid_attr, None)
+                if hid:
+                    self.canvas.delete(hid)
+                    self.connection_handle_map.pop(hid, None)
+                setattr(conn, hid_attr, None)
+
+    def show_connection_handles(self, connection: ModelConnection) -> None:
+        from_card = self.cards.get(connection.from_id)
+        to_card = self.cards.get(connection.to_id)
+        if from_card is None or to_card is None:
+            return
+
+        self.hide_connection_handles()
+
+        positions = self.canvas_view.connection_handle_positions(connection, from_card, to_card)
+        r = 6
+        start_id = self.canvas.create_oval(
+            positions["start"][0] - r,
+            positions["start"][1] - r,
+            positions["start"][0] + r,
+            positions["start"][1] + r,
+            fill=self.theme["connection"],
+            outline=self.theme.get("bg", "white"),
+            width=2,
+            tags=("connection_handle", "connection_handle_start"),
+        )
+        end_id = self.canvas.create_oval(
+            positions["end"][0] - r,
+            positions["end"][1] - r,
+            positions["end"][0] + r,
+            positions["end"][1] + r,
+            fill=self.theme["connection"],
+            outline=self.theme.get("bg", "white"),
+            width=2,
+            tags=("connection_handle", "connection_handle_end"),
+        )
+
+        ctrl_size = 6
+        radius_id = self.canvas.create_rectangle(
+            positions["radius"][0] - ctrl_size,
+            positions["radius"][1] - ctrl_size,
+            positions["radius"][0] + ctrl_size,
+            positions["radius"][1] + ctrl_size,
+            fill=self.theme["connection"],
+            outline=self.theme.get("connection_label", "#333"),
+            width=1,
+            tags=("connection_handle", "connection_handle_radius"),
+        )
+        curvature_id = self.canvas.create_rectangle(
+            positions["curvature"][0] - ctrl_size,
+            positions["curvature"][1] - ctrl_size,
+            positions["curvature"][0] + ctrl_size,
+            positions["curvature"][1] + ctrl_size,
+            fill=self.theme.get("frame_outline", self.theme["connection"]),
+            outline=self.theme.get("connection_label", "#333"),
+            width=1,
+            tags=("connection_handle", "connection_handle_curvature"),
+        )
+
+        connection.start_handle_id = start_id
+        connection.end_handle_id = end_id
+        connection.radius_handle_id = radius_id
+        connection.curvature_handle_id = curvature_id
+
+        for hid in (start_id, end_id, radius_id, curvature_id):
+            self._register_connection_handle(connection, hid)
+
+        self.canvas.tag_raise(start_id)
+        self.canvas.tag_raise(end_id)
+        self.canvas.tag_raise(radius_id)
+        self.canvas.tag_raise(curvature_id)
 
     def clear_attachment_selection(self) -> None:
         if self.attachment_selection_box_id:
@@ -2295,13 +2385,20 @@ class BoardApp:
         cy = self.canvas.canvasy(event.y)
         items = self.canvas.find_overlapping(cx, cy, cx, cy)
         card_id = None
+        connection_hover = None
         for it in items:
             cid = self.get_card_id_from_item((it,))
             if cid is not None:
                 card_id = cid
                 break
+            connection_hover = self.connection_handle_map.get(it)
+            if connection_hover:
+                break
+            connection_hover = self.get_connection_from_item(it)
+            if connection_hover:
+                break
 
-        if card_id == self.hover_card_id:
+        if card_id == self.hover_card_id and connection_hover == self.hover_connection:
             return
 
         if self.hover_card_id is not None and self.hover_card_id not in self.selected_cards:
@@ -2310,6 +2407,13 @@ class BoardApp:
         self.hover_card_id = card_id
         if card_id is not None and card_id not in self.selected_cards:
             self.show_card_handles(card_id, include_resize=False)
+
+        if connection_hover != self.hover_connection:
+            if self.hover_connection and self.hover_connection is not self.selected_connection:
+                self.canvas_view.set_connection_hover(self.hover_connection, False)
+            self.hover_connection = connection_hover
+            if connection_hover and connection_hover is not self.selected_connection:
+                self.canvas_view.set_connection_hover(connection_hover, True)
 
     def start_pan(self, event):
         self.canvas.scan_mark(event.x, event.y)
@@ -2405,6 +2509,11 @@ class BoardApp:
 
     def update_connections_for_card(self, card_id):
         self.canvas_view.update_connection_positions(self.connections, self.cards, card_id)
+        if self.selected_connection and (
+            self.selected_connection.from_id == card_id
+            or self.selected_connection.to_id == card_id
+        ):
+            self.show_connection_handles(self.selected_connection)
 
     def toggle_connect_mode(self):
         self.connect_controller.toggle_connect_mode()
