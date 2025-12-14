@@ -277,30 +277,103 @@ class CanvasView:
 
         return sx, sy, tx, ty
 
+    def _anchor_direction(self, anchor: str | None, fallback: tuple[float, float]) -> tuple[float, float]:
+        directions = {
+            "n": (0.0, -1.0),
+            "e": (1.0, 0.0),
+            "s": (0.0, 1.0),
+            "w": (-1.0, 0.0),
+        }
+        return directions.get(anchor, fallback)
+
+    def _bezier_point(
+        self,
+        start: tuple[float, float],
+        ctrl1: tuple[float, float],
+        ctrl2: tuple[float, float],
+        end: tuple[float, float],
+        t: float,
+    ) -> tuple[float, float]:
+        inv_t = 1 - t
+        x = (
+            inv_t**3 * start[0]
+            + 3 * inv_t**2 * t * ctrl1[0]
+            + 3 * inv_t * t**2 * ctrl2[0]
+            + t**3 * end[0]
+        )
+        y = (
+            inv_t**3 * start[1]
+            + 3 * inv_t**2 * t * ctrl1[1]
+            + 3 * inv_t * t**2 * ctrl2[1]
+            + t**3 * end[1]
+        )
+        return x, y
+
+    def _sample_cubic_bezier(
+        self,
+        start: tuple[float, float],
+        ctrl1: tuple[float, float],
+        ctrl2: tuple[float, float],
+        end: tuple[float, float],
+        *,
+        steps: int,
+    ) -> list[float]:
+        samples: list[float] = []
+        for i in range(steps + 1):
+            t = i / steps
+            x, y = self._bezier_point(start, ctrl1, ctrl2, end, t)
+            samples.extend([x, y])
+        return samples
+
     def _connection_points(
         self, connection: Connection, sx: float, sy: float, tx: float, ty: float
-    ) -> tuple[Sequence[float], bool]:
+    ) -> tuple[Sequence[float], Dict[str, float | bool]]:
         if getattr(connection, "style", DEFAULT_CONNECTION_STYLE) != "rounded":
-            return (sx, sy, tx, ty), False
+            midpoint = ((sx + tx) / 2, (sy + ty) / 2)
+            return (sx, sy, tx, ty), {"smooth": False, "midpoint_x": midpoint[0], "midpoint_y": midpoint[1]}
 
         radius = max(getattr(connection, "radius", DEFAULT_CONNECTION_RADIUS), 0.0)
-        curvature = getattr(
-            connection, "curvature", DEFAULT_CONNECTION_CURVATURE
-        )
+        curvature = getattr(connection, "curvature", DEFAULT_CONNECTION_CURVATURE)
 
         dx = tx - sx
         dy = ty - sy
         length = math.hypot(dx, dy) or 1.0
-        nx = -dy / length
-        ny = dx / length
-        offset = radius + curvature
+        dir_x = dx / length
+        dir_y = dy / length
+        normal_x = -dy / length
+        normal_y = dx / length
 
-        mx = (sx + tx) / 2 + nx * offset
-        my = (sy + ty) / 2 + ny * offset
-        return (sx, sy, mx, my, tx, ty), True
+        handle_base = radius if radius > 0 else length * 0.25
+        handle_length = max(length * 0.1, min(handle_base, length * 0.6))
 
-    def _label_position(self, coords: Sequence[float], smooth: bool) -> tuple[float, float]:
-        if smooth and len(coords) >= 4:
+        start_dir = self._anchor_direction(getattr(connection, "from_anchor", None), (dir_x, dir_y))
+        end_dir_outward = self._anchor_direction(
+            getattr(connection, "to_anchor", None), (-dir_x, -dir_y)
+        )
+        end_dir = (-end_dir_outward[0], -end_dir_outward[1])
+
+        start_ctrl = (sx + start_dir[0] * handle_length, sy + start_dir[1] * handle_length)
+        end_ctrl = (tx - end_dir[0] * handle_length, ty - end_dir[1] * handle_length)
+
+        curve_shift = max(-length / 2, min(curvature, length / 2))
+        if curve_shift:
+            shift_x = normal_x * curve_shift
+            shift_y = normal_y * curve_shift
+            start_ctrl = (start_ctrl[0] + shift_x, start_ctrl[1] + shift_y)
+            end_ctrl = (end_ctrl[0] + shift_x, end_ctrl[1] + shift_y)
+
+        steps = max(12, int(length / 18))
+        coords = self._sample_cubic_bezier((sx, sy), start_ctrl, end_ctrl, (tx, ty), steps=steps)
+        mid_x, mid_y = self._bezier_point((sx, sy), start_ctrl, end_ctrl, (tx, ty), 0.5)
+
+        return coords, {"smooth": False, "midpoint_x": mid_x, "midpoint_y": mid_y}
+
+    def _label_position(
+        self, coords: Sequence[float], render_info: Dict[str, float | bool]
+    ) -> tuple[float, float]:
+        if "midpoint_x" in render_info and "midpoint_y" in render_info:
+            return render_info["midpoint_x"], render_info["midpoint_y"]
+        if render_info.get("smooth") and len(coords) >= 4:
             return coords[2], coords[3]
         return (coords[0] + coords[-2]) / 2, (coords[1] + coords[-1]) / 2
 
@@ -316,21 +389,21 @@ class CanvasView:
     def draw_connection(self, connection: Connection, from_card: Card, to_card: Card) -> None:
         sx, sy, tx, ty = self._connection_anchors(from_card, to_card, connection)
         arrow = self._arrow_for_direction(connection.direction)
-        coords, smooth = self._connection_points(connection, sx, sy, tx, ty)
+        coords, render_info = self._connection_points(connection, sx, sy, tx, ty)
         line_kwargs = {
             "arrow": arrow,
             "width": 2,
             "fill": self.theme["connection"],
             "tags": ("connection",),
         }
-        if smooth:
+        if render_info.get("smooth"):
             line_kwargs["smooth"] = True
 
         line_id = self.canvas.create_line(*coords, **line_kwargs)
 
         label_id = None
         if connection.label:
-            mx, my = self._label_position(coords, smooth)
+            mx, my = self._label_position(coords, render_info)
             label_id = self.canvas.create_text(
                 mx,
                 my,
@@ -357,12 +430,12 @@ class CanvasView:
             if from_card is None or to_card is None:
                 continue
             sx, sy, tx, ty = self._connection_anchors(from_card, to_card, conn)
-            coords, smooth = self._connection_points(conn, sx, sy, tx, ty)
+            coords, render_info = self._connection_points(conn, sx, sy, tx, ty)
             if conn.line_id:
                 self.canvas.coords(conn.line_id, *coords)
                 self.apply_connection_direction(conn)
             if conn.label_id:
-                mx, my = self._label_position(coords, smooth)
+                mx, my = self._label_position(coords, render_info)
                 self.canvas.coords(conn.label_id, mx, my)
 
     def render_board(
