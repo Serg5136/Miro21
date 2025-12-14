@@ -220,8 +220,11 @@ class SidebarFactory:
         spn_grid.bind("<FocusOut>", app.on_grid_size_change)
         add_tooltip(spn_grid, "Изменить шаг сетки (Enter для применения)")
 
-        tk.Label(controls_frame, text="Мини-карта", bg="#f0f0f0",
-                 font=("Arial", 12, "bold")).pack(pady=(20, 5))
+        minimap_label = tk.Label(
+            controls_frame, text="Мини карта", bg="#f0f0f0",
+            font=("Arial", 12, "bold")
+        )
+        minimap_label.pack(pady=(20, 5))
 
         app.minimap = tk.Canvas(
             controls_frame, width=240, height=160,
@@ -234,8 +237,8 @@ class SidebarFactory:
         add_canvas_tooltip(app.minimap, "minimap_frame", "Рамка на доске")
         add_canvas_tooltip(app.minimap, "minimap_viewport", "Текущая область просмотра")
 
-        tk.Label(
-            controls_frame,
+        add_tooltip(
+            minimap_label,
             text=(
                 "Подсказки:\n"
                 "— Двойной клик по пустому месту: новая карточка\n"
@@ -256,7 +259,7 @@ class SidebarFactory:
                 "   карточку, чтобы соединить\n"
                 "— Квадрат внизу справа — изменение размера карточки"
             ),
-            bg="#f0f0f0", justify="left", anchor="w", wraplength=240
-        ).pack(padx=10, pady=10)
+            delay=300,
+        )
 
         return sidebar
