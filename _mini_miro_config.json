@@ -1,0 +1,8 @@
+{
+  "theme": "light",
+  "text_colors": {
+    "light": "#0080ff",
+    "dark": "#ffffff"
+  },
+  "show_grid": true
+}
