@@ -7,7 +7,6 @@ import io
 from pathlib import Path
 from typing import Dict, List
 from .autosave import AutoSaveService
-from .controllers import ConnectController, DragController, SelectionController
 from .board_model import (
     Attachment,
     BoardData,
@@ -17,11 +16,14 @@ from .board_model import (
     Frame as ModelFrame,
     bulk_update_card_colors,
 )
+from .canvas_view import CanvasView
 from .config import THEMES, load_theme_settings, save_theme_settings
+from .connect_controller import ConnectController
+from .drag_controller import DragController
+from . import files as file_io
 from .history import History
-from .io import files as file_io
-from .ui import LayoutBuilder
-from .view.canvas_view import CanvasView
+from .layout import LayoutBuilder
+from .selection_controller import SelectionController
 
 class BoardApp:
     def __init__(self):

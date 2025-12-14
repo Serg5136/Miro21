@@ -3,7 +3,7 @@ from typing import Optional
 
 from .sidebar import SidebarFactory
 from .tooltips import add_tooltip
-from ..input import EventBinder
+from .events import EventBinder
 
 
 class ToolbarFactory:

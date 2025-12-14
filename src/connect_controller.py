@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from tkinter import messagebox
 
 if TYPE_CHECKING:
-    from src.main import BoardApp
+    from .main import BoardApp
 
 
 class ConnectController:

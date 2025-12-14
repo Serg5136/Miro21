@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, Iterable
 
 from tkinter import filedialog, messagebox
 
-from ..board_model import SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS
+from .board_model import SCHEMA_VERSION, SUPPORTED_SCHEMA_VERSIONS
 
 
 class BoardFileError(Exception):
