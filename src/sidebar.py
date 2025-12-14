@@ -12,10 +12,18 @@ class SidebarFactory:
         controls_frame = tk.Frame(sidebar, bg="#f0f0f0")
 
         collapse_button = tk.Button(
-            sidebar, text="Свернуть управление ▴"
+            sidebar,
+            text="Свернуть управление ▴",
+            takefocus=True,
+            highlightthickness=1,
+            highlightbackground="#999999",
+            highlightcolor="#333333",
         )
         collapse_button.pack(fill="x", padx=10, pady=(10, 5))
         controls_frame.pack(fill="both", expand=True)
+
+        collapse_button.aria_controls = "manage_section"
+        collapse_button.aria_expanded = tk.BooleanVar(value=True)
 
         manage_section = tk.Frame(controls_frame, bg="#f0f0f0")
         manage_section.pack(fill="both", expand=False)
@@ -26,11 +34,19 @@ class SidebarFactory:
             if manage_section.winfo_ismapped():
                 manage_section.pack_forget()
                 collapse_button.config(text="Показать управление ▾")
+                collapse_button.aria_expanded.set(False)
             else:
                 manage_section.pack(fill="both", expand=False, before=other_sections)
                 collapse_button.config(text="Свернуть управление ▴")
+                collapse_button.aria_expanded.set(True)
 
         collapse_button.configure(command=toggle_sidebar)
+        collapse_button.bind("<Return>", lambda event: toggle_sidebar())
+        collapse_button.bind("<space>", lambda event: toggle_sidebar())
+        add_tooltip(
+            collapse_button,
+            "Свернуть или развернуть панель управления (доступно с клавиатуры)",
+        )
 
         tk.Label(manage_section, text="Управление", bg="#f0f0f0",
                  font=("Arial", 12, "bold")).pack(pady=(5, 5))
@@ -101,8 +117,15 @@ class SidebarFactory:
             relief="flat",
             bg="#f0f0f0",
             activebackground="#e0e0e0",
+            takefocus=True,
+            highlightthickness=1,
+            highlightbackground="#999999",
+            highlightcolor="#333333",
         )
         file_collapse_button.pack(side="right")
+
+        file_collapse_button.aria_controls = "file_content"
+        file_collapse_button.aria_expanded = tk.BooleanVar(value=True)
 
         file_content = tk.Frame(file_section, bg="#f0f0f0")
         file_content.pack(fill="both", expand=False)
@@ -113,11 +136,19 @@ class SidebarFactory:
             if collapsed:
                 file_content.pack_forget()
                 file_collapse_button.config(text="Показать «Файл» ▾")
+                file_collapse_button.aria_expanded.set(False)
             else:
                 file_content.pack(fill="both", expand=False)
                 file_collapse_button.config(text="Свернуть «Файл» ▴")
+                file_collapse_button.aria_expanded.set(True)
 
         file_collapse_button.configure(command=toggle_file_section)
+        file_collapse_button.bind("<Return>", lambda event: toggle_file_section())
+        file_collapse_button.bind("<space>", lambda event: toggle_file_section())
+        add_tooltip(
+            file_collapse_button,
+            "Свернуть или открыть раздел «Файл» (можно переключать клавишами)",
+        )
 
         btn_save = tk.Button(file_content, text="Сохранить...",
                              command=app.save_board)
