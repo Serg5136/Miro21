@@ -64,7 +64,7 @@ class EventBinder:
         for hotkey in self.hotkeys:
             handler = getattr(app, hotkey.handler)
             for sequence in hotkey.sequences:
-                app.root.bind(sequence, handler)
+                app.root.bind_all(sequence, handler)
 
     def hotkey_table(self) -> List[Hotkey]:
         return list(self.hotkeys)
