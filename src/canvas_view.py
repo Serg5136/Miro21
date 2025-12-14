@@ -325,6 +325,72 @@ class CanvasView:
             samples.extend([x, y])
         return samples
 
+    def _segments_intersect(
+        self,
+        a1: tuple[float, float],
+        a2: tuple[float, float],
+        b1: tuple[float, float],
+        b2: tuple[float, float],
+    ) -> bool:
+        def _orientation(p, q, r):
+            return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+
+        def _on_segment(p, q, r):
+            return (
+                min(p[0], r[0]) <= q[0] <= max(p[0], r[0])
+                and min(p[1], r[1]) <= q[1] <= max(p[1], r[1])
+            )
+
+        o1 = _orientation(a1, a2, b1)
+        o2 = _orientation(a1, a2, b2)
+        o3 = _orientation(b1, b2, a1)
+        o4 = _orientation(b1, b2, a2)
+
+        if (o1 == 0 and _on_segment(a1, b1, a2)) or (o2 == 0 and _on_segment(a1, b2, a2)):
+            return True
+        if (o3 == 0 and _on_segment(b1, a1, b2)) or (o4 == 0 and _on_segment(b1, a2, b2)):
+            return True
+
+        return (o1 > 0) != (o2 > 0) and (o3 > 0) != (o4 > 0)
+
+    def _polyline_self_intersects(self, coords: Sequence[float]) -> bool:
+        points = list(zip(coords[0::2], coords[1::2]))
+        for i in range(len(points) - 1):
+            a1, a2 = points[i], points[i + 1]
+            for j in range(i + 2, len(points) - 1):
+                # Adjacent segments share a point and should not be treated as intersections
+                if j == i + 1:
+                    continue
+                b1, b2 = points[j], points[j + 1]
+                if self._segments_intersect(a1, a2, b1, b2):
+                    return True
+        return False
+
+    def _straight_connection(
+        self, connection: Connection, sx: float, sy: float, tx: float, ty: float
+    ) -> tuple[Sequence[float], Dict[str, float | bool]]:
+        midpoint = ((sx + tx) / 2, (sy + ty) / 2)
+        length = math.hypot(tx - sx, ty - sy) or 1.0
+        dir_x = (tx - sx) / length
+        dir_y = (ty - sy) / length
+        return (
+            (sx, sy, tx, ty),
+            {
+                "smooth": False,
+                "midpoint_x": midpoint[0],
+                "midpoint_y": midpoint[1],
+                "normal_x": 0.0,
+                "normal_y": 0.0,
+                "length": length,
+                "start_dir": self._anchor_direction(
+                    getattr(connection, "from_anchor", None), (dir_x, dir_y)
+                ),
+                "handle_length": 0.0,
+                "baseline_mid_x": midpoint[0],
+                "baseline_mid_y": midpoint[1],
+            },
+        )
+
     def _connection_points(
         self, connection: Connection, sx: float, sy: float, tx: float, ty: float
     ) -> tuple[Sequence[float], Dict[str, float | bool]]:
@@ -380,30 +446,13 @@ class CanvasView:
             )
 
         if style != "rounded":
-            midpoint = ((sx + tx) / 2, (sy + ty) / 2)
-            length = math.hypot(tx - sx, ty - sy) or 1.0
-            dir_x = (tx - sx) / length
-            dir_y = (ty - sy) / length
-            return (
-                (sx, sy, tx, ty),
-                {
-                    "smooth": False,
-                    "midpoint_x": midpoint[0],
-                    "midpoint_y": midpoint[1],
-                    "normal_x": 0.0,
-                    "normal_y": 0.0,
-                    "length": length,
-                    "start_dir": self._anchor_direction(
-                        getattr(connection, "from_anchor", None), (dir_x, dir_y)
-                    ),
-                    "handle_length": 0.0,
-                    "baseline_mid_x": midpoint[0],
-                    "baseline_mid_y": midpoint[1],
-                },
-            )
+            return self._straight_connection(connection, sx, sy, tx, ty)
 
         radius = max(getattr(connection, "radius", DEFAULT_CONNECTION_RADIUS), 0.0)
         curvature = getattr(connection, "curvature", DEFAULT_CONNECTION_CURVATURE)
+
+        if radius <= 0 and curvature == 0:
+            return self._straight_connection(connection, sx, sy, tx, ty)
 
         dx = tx - sx
         dy = ty - sy
@@ -414,7 +463,13 @@ class CanvasView:
         normal_y = dx / length
 
         handle_base = radius if radius > 0 else length * 0.25
-        handle_length = max(length * 0.1, min(handle_base, length * 0.6))
+        max_handle_length = length * 0.45
+        if radius > 0 and handle_base > max_handle_length:
+            return self._straight_connection(connection, sx, sy, tx, ty)
+
+        handle_length = max(length * 0.1, min(handle_base, max_handle_length))
+        if handle_length <= 0:
+            return self._straight_connection(connection, sx, sy, tx, ty)
 
         start_dir = self._anchor_direction(getattr(connection, "from_anchor", None), (dir_x, dir_y))
         end_dir_outward = self._anchor_direction(
@@ -434,6 +489,9 @@ class CanvasView:
 
         steps = max(12, int(length / 18))
         coords = self._sample_cubic_bezier((sx, sy), start_ctrl, end_ctrl, (tx, ty), steps=steps)
+        if self._polyline_self_intersects(coords):
+            return self._straight_connection(connection, sx, sy, tx, ty)
+
         mid_x, mid_y = self._bezier_point((sx, sy), start_ctrl, end_ctrl, (tx, ty), 0.5)
 
         return coords, {
