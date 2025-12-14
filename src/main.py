@@ -1532,6 +1532,13 @@ class BoardApp:
 
         try:
             grabbed = ImageGrab.grabclipboard()
+        except FileNotFoundError:
+            messagebox.showerror(
+                "Вставка изображения",
+                "Не удалось прочитать буфер обмена. Установите утилиту xclip (X11)"
+                " или wl-clipboard (Wayland) и попробуйте снова.",
+            )
+            return None
         except Exception:
             return None
 
