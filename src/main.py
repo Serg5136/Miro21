@@ -1,4 +1,5 @@
 import tkinter as tk
+from dataclasses import dataclass
 import base64
 import binascii
 import math
@@ -28,6 +29,14 @@ from . import files as file_io
 from .history import History
 from .layout import LayoutBuilder
 from .selection_controller import SelectionController
+
+
+@dataclass
+class BoardTab:
+    name: str
+    history: History
+    saved_history_index: int
+
 
 class BoardApp:
     def __init__(self):
@@ -149,13 +158,19 @@ class BoardApp:
         # Мини-карта
         self.minimap = None
 
+        # Несколько досок
+        self.boards: list[BoardTab] = []
+        self.active_board_index: int | None = None
+        self.board_tab_buttons: list[tk.Button] = []
+        self.board_tabs_container: tk.Frame | None = None
+
         # UI helpers
         self.ui_builder = LayoutBuilder()
 
         self._build_ui()
         self.canvas_view = CanvasView(self.canvas, self.minimap, self.theme)
         self._setup_dnd()
-        self.init_board_state()
+        self.bootstrap_boards()
         self.update_controls_state()
 
         # Обработчик закрытия окна
@@ -624,7 +639,7 @@ class BoardApp:
                     data = self.autosave_service.load()
                     self.set_board_from_data(data)
                     self.history.clear_and_init(self.get_board_data())
-                    self.saved_history_index = -1
+                    self._set_saved_history_index(-1)
                     self.push_history()
                     restored = True
                 except Exception as e:
@@ -654,10 +669,23 @@ class BoardApp:
             self.history.clear_and_init(self.get_board_data())
             self.draw_grid()
             self.push_history()
-            self.saved_history_index = self.history.index
+            self._set_saved_history_index(self.history.index)
 
         self.update_unsaved_flag()
         self.update_minimap()
+
+    def bootstrap_boards(self):
+        self.boards.clear()
+        self.active_board_index = None
+        self.init_board_state()
+        initial_tab = BoardTab(
+            name=self._generate_board_name(1),
+            history=self.history,
+            saved_history_index=self.saved_history_index,
+        )
+        self.boards.append(initial_tab)
+        self.active_board_index = 0
+        self.render_board_tabs()
 
     def get_board_data(self):
         """
@@ -770,6 +798,100 @@ class BoardApp:
         if self.unsaved_changes:
             title += " *"
         self.root.title(title)
+        self.render_board_tabs()
+
+    def _set_saved_history_index(self, index: int) -> None:
+        self.saved_history_index = index
+        if self.active_board_index is not None and self.active_board_index < len(self.boards):
+            self.boards[self.active_board_index].saved_history_index = index
+
+    def _persist_current_board_tab(self) -> None:
+        if self.active_board_index is None:
+            return
+        if self.active_board_index >= len(self.boards):
+            return
+        self.boards[self.active_board_index].history = self.history
+        self.boards[self.active_board_index].saved_history_index = self.saved_history_index
+
+    def _generate_board_name(self, number: int) -> str:
+        return f"Доска {number}"
+
+    def _is_board_unsaved(self, tab: BoardTab) -> bool:
+        return tab.history.index != tab.saved_history_index
+
+    def render_board_tabs(self):
+        if self.board_tabs_container is None:
+            return
+
+        for btn in self.board_tab_buttons:
+            btn.destroy()
+        self.board_tab_buttons.clear()
+
+        for idx, tab in enumerate(self.boards):
+            label = tab.name
+            if self._is_board_unsaved(tab):
+                label += " *"
+            btn = tk.Button(
+                self.board_tabs_container,
+                text=label,
+                anchor="w",
+                command=lambda i=idx: self.switch_board(i),
+            )
+            if idx == self.active_board_index:
+                btn.config(relief="sunken", bg="#e8e8e8")
+            btn.pack(fill="x", padx=4, pady=2)
+            self.board_tab_buttons.append(btn)
+
+    def create_new_board(self):
+        self._persist_current_board_tab()
+        new_history = History()
+        self.history = new_history
+
+        empty_board = BoardData(cards={}, connections=[], frames={}).to_primitive()
+        self.set_board_from_data(empty_board)
+        self.history.clear_and_init(self.get_board_data())
+        self.push_history()
+        self._set_saved_history_index(self.history.index)
+
+        new_tab = BoardTab(
+            name=self._generate_board_name(len(self.boards) + 1),
+            history=new_history,
+            saved_history_index=self.saved_history_index,
+        )
+        self.boards.append(new_tab)
+        self.active_board_index = len(self.boards) - 1
+        self.render_board_tabs()
+        self.update_controls_state()
+
+    def switch_board(self, index: int):
+        if index == self.active_board_index:
+            return
+        if index < 0 or index >= len(self.boards):
+            return
+
+        self._persist_current_board_tab()
+        self.active_board_index = index
+        target = self.boards[index]
+
+        self.history = target.history
+        self.saved_history_index = target.saved_history_index
+
+        state = self.history.current_state()
+        if state is None:
+            state = BoardData(cards={}, connections=[], frames={}).to_primitive()
+            self.set_board_from_data(state)
+            self.history.clear_and_init(state)
+            self.push_history()
+            self._set_saved_history_index(self.history.index)
+        else:
+            self.set_board_from_data(state)
+
+        self.write_autosave(state)
+        self.update_unsaved_flag()
+        self.update_minimap()
+        self.update_controls_state()
+        self.render_board_tabs()
+        self.update_connect_mode_indicator()
 
     def write_autosave(self, state=None):
         try:
@@ -3202,7 +3324,7 @@ class BoardApp:
     def save_board(self):
         data = self.get_board_data()
         if file_io.save_board(data):
-            self.saved_history_index = self.history.index
+            self._set_saved_history_index(self.history.index)
             self.update_unsaved_flag()
 
     def load_board(self):
@@ -3214,7 +3336,7 @@ class BoardApp:
         state = self.get_board_data()
         self.history.clear_and_init(state)
         self.push_history()
-        self.saved_history_index = self.history.index
+        self._set_saved_history_index(self.history.index)
         self.update_unsaved_flag()
         self.write_autosave(state)
         self.update_minimap()

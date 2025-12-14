@@ -6,7 +6,7 @@ from .tooltips import add_tooltip
 class SidebarFactory:
     def create(self, app) -> tk.Frame:
         sidebar = tk.Frame(app.root, width=260, bg="#f0f0f0")
-        sidebar.grid(row=1, column=1, sticky="ns")
+        sidebar.grid(row=1, column=2, sticky="ns")
         sidebar.grid_propagate(False)
 
         controls_frame = tk.Frame(sidebar, bg="#f0f0f0")

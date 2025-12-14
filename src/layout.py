@@ -9,7 +9,7 @@ from .events import EventBinder
 class ToolbarFactory:
     def create(self, app) -> tk.Frame:
         toolbar = tk.Frame(app.root, bg="#e0e0e0", height=32)
-        toolbar.grid(row=0, column=0, columnspan=2, sticky="new")
+        toolbar.grid(row=0, column=0, columnspan=3, sticky="new")
 
         btn_undo_toolbar = tk.Button(
             toolbar,
@@ -83,10 +83,30 @@ class ToolbarFactory:
         return toolbar
 
 
+class BoardTabsFactory:
+    def create(self, app) -> tk.Frame:
+        container = tk.Frame(app.root, width=180, bg="#f6f6f6")
+        container.grid(row=1, column=0, sticky="ns")
+        container.grid_propagate(False)
+
+        header = tk.Label(container, text="Доски", bg="#f6f6f6", font=("Arial", 12, "bold"))
+        header.pack(fill="x", padx=10, pady=(12, 6))
+
+        add_button = tk.Button(container, text="+ Новая доска", command=app.create_new_board)
+        add_button.pack(fill="x", padx=10, pady=(0, 10))
+        add_tooltip(add_button, "Создать пустую доску и переключиться на неё")
+
+        tabs_frame = tk.Frame(container, bg="#f6f6f6")
+        tabs_frame.pack(fill="both", expand=True, padx=6, pady=(0, 10))
+
+        app.board_tabs_container = tabs_frame
+        return container
+
+
 class CanvasFactory:
     def create_canvas(self, app) -> tk.Canvas:
         canvas = tk.Canvas(app.root, bg=app.theme["bg"])
-        canvas.grid(row=1, column=0, sticky="nsew")
+        canvas.grid(row=1, column=1, sticky="nsew")
         canvas.config(scrollregion=(0, 0, 4000, 4000))
         return canvas
 
@@ -147,12 +167,14 @@ class LayoutBuilder:
     def __init__(
         self,
         toolbar_factory: Optional[ToolbarFactory] = None,
+        board_tabs_factory: Optional[BoardTabsFactory] = None,
         sidebar_factory: Optional[SidebarFactory] = None,
         canvas_factory: Optional[CanvasFactory] = None,
         minimap_factory: Optional[MinimapFactory] = None,
         events_binder: Optional[EventBinder] = None,
     ):
         self.toolbar_factory = toolbar_factory or ToolbarFactory()
+        self.board_tabs_factory = board_tabs_factory or BoardTabsFactory()
         self.sidebar_factory = sidebar_factory or SidebarFactory()
         self.canvas_factory = canvas_factory or CanvasFactory()
         self.minimap_factory = minimap_factory or MinimapFactory()
@@ -161,12 +183,14 @@ class LayoutBuilder:
     def configure_root_grid(self, root: tk.Tk) -> None:
         root.rowconfigure(0, weight=0)
         root.rowconfigure(1, weight=1)
-        root.columnconfigure(0, weight=1)
-        root.columnconfigure(1, weight=0)
+        root.columnconfigure(0, weight=0)
+        root.columnconfigure(1, weight=1)
+        root.columnconfigure(2, weight=0)
 
     def build(self, app) -> None:
         self.configure_root_grid(app.root)
         self.toolbar_factory.create(app)
+        self.board_tabs_factory.create(app)
         app.canvas = self.canvas_factory.create_canvas(app)
         self.minimap_factory.create(app)
         self.sidebar_factory.create(app)
