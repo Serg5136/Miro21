@@ -1,7 +1,7 @@
 import tkinter as tk
 from typing import Dict, Iterable, Sequence
 
-from ..board_model import Card, Connection, Frame
+from .board_model import Card, Connection, Frame
 
 
 class CanvasView:

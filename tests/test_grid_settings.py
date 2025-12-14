@@ -2,8 +2,8 @@ import tkinter as tk
 
 import pytest
 
+from src.canvas_view import CanvasView
 from src.config import load_theme_settings, save_theme_settings, THEMES
-from src.view.canvas_view import CanvasView
 
 
 def _grid_states(canvas: tk.Canvas) -> set[str]:
