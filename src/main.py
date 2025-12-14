@@ -12,6 +12,8 @@ from .board_model import (
     BoardData,
     Card as ModelCard,
     Connection as ModelConnection,
+    DEFAULT_CONNECTION_RADIUS,
+    DEFAULT_CONNECTION_STYLE,
     DEFAULT_CONNECTION_DIRECTION,
     Frame as ModelFrame,
     bulk_update_card_colors,
