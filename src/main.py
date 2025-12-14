@@ -1,6 +1,7 @@
 import tkinter as tk
 import base64
 import binascii
+import math
 from tkinter import colorchooser, filedialog, messagebox, simpledialog
 import copy
 import io
@@ -13,6 +14,7 @@ from .board_model import (
     Card as ModelCard,
     Connection as ModelConnection,
     DEFAULT_CONNECTION_RADIUS,
+    DEFAULT_CONNECTION_CURVATURE,
     DEFAULT_CONNECTION_STYLE,
     DEFAULT_CONNECTION_DIRECTION,
     Frame as ModelFrame,
@@ -240,6 +242,41 @@ class BoardApp:
     
         # Меню связи
         self.connection_menu = tk.Menu(self.root, tearoff=0)
+        connection_style_menu = tk.Menu(self.connection_menu, tearoff=0)
+        connection_style_menu.add_radiobutton(
+            label="Прямая",
+            variable=self.var_connection_style,
+            value="straight",
+            command=lambda: self._context_set_connection_style("straight"),
+        )
+        connection_style_menu.add_radiobutton(
+            label="Ломаная",
+            variable=self.var_connection_style,
+            value="elbow",
+            command=lambda: self._context_set_connection_style("elbow"),
+        )
+        connection_style_menu.add_radiobutton(
+            label="Закруглённая",
+            variable=self.var_connection_style,
+            value="rounded",
+            command=lambda: self._context_set_connection_style("rounded"),
+        )
+        connection_style_menu.add_separator()
+        connection_style_menu.add_command(
+            label="Радиус закругления…",
+            command=self._context_set_connection_radius,
+        )
+        connection_style_menu.add_command(
+            label="Кривизна…",
+            command=self._context_set_connection_curvature,
+        )
+        connection_style_menu.add_command(
+            label="Сбросить радиус и кривизну",
+            command=self._context_reset_connection_rounding,
+        )
+        self.connection_menu.add_cascade(
+            label="Тип линии", menu=connection_style_menu
+        )
         self.connection_menu.add_command(
             label="Редактировать подпись",
             command=self._context_edit_connection_label,
@@ -447,9 +484,92 @@ class BoardApp:
                 tags=("connection_label",),
             )
             conn.label_id = label_id
-    
+
         self.push_history()
-    
+
+    def _context_set_connection_style(self, style: str) -> None:
+        conn = self.context_connection
+        if not conn:
+            return
+        conn.style = style
+        self.var_connection_style.set(style)
+        self.canvas_view.update_connection_positions([conn], self.cards)
+        self.show_connection_handles(conn)
+        self.push_history()
+
+    def _context_set_connection_radius(self) -> None:
+        conn = self.context_connection
+        if not conn:
+            return
+        from_card = self.cards.get(conn.from_id)
+        to_card = self.cards.get(conn.to_id)
+        if not from_card or not to_card:
+            return
+        _, render_info = self.canvas_view.connection_geometry(conn, from_card, to_card)
+        length = render_info.get(
+            "length", math.hypot(to_card.x - from_card.x, to_card.y - from_card.y)
+        )
+        current = getattr(conn, "radius", DEFAULT_CONNECTION_RADIUS)
+        new_radius = simpledialog.askfloat(
+            "Радиус закругления",
+            "Задайте радиус (в пикселях).",
+            initialvalue=current,
+            minvalue=0.0,
+            parent=self.root,
+        )
+        if new_radius is None:
+            return
+        max_radius = max(0.0, (length or 1.0) * 0.6)
+        conn.style = "rounded"
+        conn.radius = max(0.0, min(float(new_radius), max_radius))
+        self.var_connection_style.set(conn.style)
+        self.var_connection_radius.set(conn.radius)
+        self.canvas_view.update_connection_positions([conn], self.cards)
+        self.show_connection_handles(conn)
+        self.push_history()
+
+    def _context_set_connection_curvature(self) -> None:
+        conn = self.context_connection
+        if not conn:
+            return
+        from_card = self.cards.get(conn.from_id)
+        to_card = self.cards.get(conn.to_id)
+        if not from_card or not to_card:
+            return
+        _, render_info = self.canvas_view.connection_geometry(conn, from_card, to_card)
+        length = render_info.get(
+            "length", math.hypot(to_card.x - from_card.x, to_card.y - from_card.y)
+        )
+        current = getattr(conn, "curvature", DEFAULT_CONNECTION_CURVATURE)
+        new_curvature = simpledialog.askfloat(
+            "Кривизна",
+            "Смещение дуги (может быть отрицательным, px):",
+            initialvalue=current,
+            parent=self.root,
+        )
+        if new_curvature is None:
+            return
+        limit = max(1.0, length) / 2
+        conn.style = "rounded"
+        conn.curvature = max(-limit, min(float(new_curvature), limit))
+        self.var_connection_style.set(conn.style)
+        self.canvas_view.update_connection_positions([conn], self.cards)
+        self.show_connection_handles(conn)
+        self.push_history()
+
+    def _context_reset_connection_rounding(self) -> None:
+        conn = self.context_connection
+        if not conn:
+            return
+        conn.style = "rounded"
+        conn.radius = DEFAULT_CONNECTION_RADIUS
+        conn.curvature = DEFAULT_CONNECTION_CURVATURE
+        self.var_connection_style.set(conn.style)
+        self.var_connection_radius.set(conn.radius)
+        self.canvas_view.update_connection_positions([conn], self.cards)
+        self.show_connection_handles(conn)
+        self.push_history()
+
     def _context_delete_connection(self):
         conn = self.context_connection
         if not conn:
