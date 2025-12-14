@@ -82,25 +82,59 @@ class SidebarFactory:
         app.btn_toggle_frame = btn_toggle_frame
         add_tooltip(btn_toggle_frame, "Свернуть или развернуть выделенную рамку")
 
-        tk.Label(other_sections, text="Файл", bg="#f0f0f0",
-                 font=("Arial", 12, "bold")).pack(pady=(20, 5))
+        app.var_file_menu_collapsed = getattr(
+            app, "var_file_menu_collapsed", tk.BooleanVar(value=False)
+        )
 
-        btn_save = tk.Button(other_sections, text="Сохранить...",
+        file_section = tk.Frame(other_sections, bg="#f0f0f0")
+        file_section.pack(fill="both", expand=False)
+
+        file_header = tk.Frame(file_section, bg="#f0f0f0")
+        file_header.pack(fill="x", pady=(20, 5), padx=10)
+
+        tk.Label(file_header, text="Файл", bg="#f0f0f0",
+                 font=("Arial", 12, "bold")).pack(side="left")
+
+        file_collapse_button = tk.Button(
+            file_header,
+            text="Свернуть «Файл» ▴",
+            relief="flat",
+            bg="#f0f0f0",
+            activebackground="#e0e0e0",
+        )
+        file_collapse_button.pack(side="right")
+
+        file_content = tk.Frame(file_section, bg="#f0f0f0")
+        file_content.pack(fill="both", expand=False)
+
+        def toggle_file_section():
+            collapsed = not app.var_file_menu_collapsed.get()
+            app.var_file_menu_collapsed.set(collapsed)
+            if collapsed:
+                file_content.pack_forget()
+                file_collapse_button.config(text="Показать «Файл» ▾")
+            else:
+                file_content.pack(fill="both", expand=False)
+                file_collapse_button.config(text="Свернуть «Файл» ▴")
+
+        file_collapse_button.configure(command=toggle_file_section)
+
+        btn_save = tk.Button(file_content, text="Сохранить...",
                              command=app.save_board)
         btn_save.pack(fill="x", padx=10, pady=5)
         add_tooltip(btn_save, "Сохранить текущую доску в файл")
 
-        btn_load = tk.Button(other_sections, text="Загрузить...",
+        btn_load = tk.Button(file_content, text="Загрузить...",
                              command=app.load_board)
         btn_load.pack(fill="x", padx=10, pady=5)
         add_tooltip(btn_load, "Загрузить доску из файла")
 
-        btn_export = tk.Button(other_sections, text="Экспорт в PNG",
+        btn_export = tk.Button(file_content, text="Экспорт в PNG",
                                command=app.export_png)
         btn_export.pack(fill="x", padx=10, pady=5)
         add_tooltip(btn_export, "Сохранить доску как изображение PNG")
 
-        btn_attach_image = tk.Button(other_sections, text="Прикрепить изображение",
+        btn_attach_image = tk.Button(file_content, text="Прикрепить изображение",
                                      command=app.attach_image_from_file)
         btn_attach_image.pack(fill="x", padx=10, pady=5)
         add_tooltip(btn_attach_image, "Добавить изображение к выделенной карточке")
