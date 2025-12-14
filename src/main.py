@@ -107,6 +107,8 @@ class BoardApp:
         self.var_grid_size = tk.IntVar(value=self.grid_size)
         self.var_card_width = tk.IntVar(value=180)
         self.var_card_height = tk.IntVar(value=100)
+        self.var_connection_style = tk.StringVar(value=DEFAULT_CONNECTION_STYLE)
+        self.var_connection_radius = tk.DoubleVar(value=DEFAULT_CONNECTION_RADIUS)
 
         # История (Undo/Redo) и автосохранение
         self.history = History()
@@ -699,6 +701,7 @@ class BoardApp:
         self.selected_connection = connection
         self.context_connection = connection
         self.render_selection()
+        self._sync_connection_controls_with_selection()
         self.update_controls_state()
 
     def _register_connection_handle(self, connection: ModelConnection, handle_id: int) -> None:
@@ -793,6 +796,7 @@ class BoardApp:
     def update_controls_state(self):
         has_card_selection = bool(self.selected_cards)
         has_frame_selection = self.selected_frame_id is not None
+        has_connection_selection = self.selected_connection is not None
 
         if hasattr(self, "btn_change_color"):
             self.btn_change_color.config(state="normal" if has_card_selection else "disabled")
@@ -802,6 +806,14 @@ class BoardApp:
             self.btn_delete_cards.config(state="normal" if has_card_selection else "disabled")
         if hasattr(self, "btn_toggle_frame"):
             self.btn_toggle_frame.config(state="normal" if has_frame_selection else "disabled")
+
+        if hasattr(self, "connection_style_controls"):
+            state = "normal" if has_connection_selection else "disabled"
+            for control in self.connection_style_controls:
+                control.config(state=state)
+        if hasattr(self, "connection_radius_scale"):
+            state = "normal" if has_connection_selection else "disabled"
+            self.connection_radius_scale.config(state=state)
 
         if hasattr(self, "btn_undo_toolbar"):
             self.btn_undo_toolbar.config(
@@ -813,6 +825,7 @@ class BoardApp:
             )
 
         self._sync_size_controls_with_selection()
+        self._sync_connection_controls_with_selection()
 
     def _sync_size_controls_with_selection(self) -> None:
         if not hasattr(self, "var_card_width") or not hasattr(self, "var_card_height"):
@@ -831,11 +844,46 @@ class BoardApp:
         self.var_card_width.set(int(card.width))
         self.var_card_height.set(int(card.height))
 
+    def _sync_connection_controls_with_selection(self) -> None:
+        if not hasattr(self, "var_connection_style"):
+            return
+        if self.selected_connection is None:
+            self.var_connection_style.set(DEFAULT_CONNECTION_STYLE)
+            self.var_connection_radius.set(DEFAULT_CONNECTION_RADIUS)
+            return
+
+        self.var_connection_style.set(getattr(self.selected_connection, "style", DEFAULT_CONNECTION_STYLE))
+        self.var_connection_radius.set(getattr(self.selected_connection, "radius", DEFAULT_CONNECTION_RADIUS))
+
     def update_connect_mode_indicator(self):
         self.connect_controller.update_connect_mode_indicator()
 
     def set_connect_mode(self, enabled: bool):
         self.connect_controller.set_connect_mode(enabled)
+
+    def on_connection_style_change(self, *_):
+        if not self.selected_connection:
+            return
+
+        new_style = self.var_connection_style.get()
+        self.selected_connection.style = new_style
+        self.canvas_view.update_connection_positions([self.selected_connection], self.cards)
+        self.show_connection_handles(self.selected_connection)
+        self.push_history()
+
+    def on_connection_radius_change(self, value: str):
+        if not self.selected_connection:
+            return
+
+        try:
+            new_radius = float(value)
+        except (TypeError, ValueError):
+            return
+
+        self.selected_connection.radius = max(0.0, new_radius)
+        self.canvas_view.update_connection_positions([self.selected_connection], self.cards)
+        self.show_connection_handles(self.selected_connection)
+        self.push_history()
 
     # ---------- Вложения ----------
 

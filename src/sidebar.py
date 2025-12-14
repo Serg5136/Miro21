@@ -208,4 +208,76 @@ class SidebarFactory:
         spn_grid.bind("<FocusOut>", app.on_grid_size_change)
         add_tooltip(spn_grid, "Изменить шаг сетки (Enter для применения)")
 
+        tk.Label(
+            other_sections, text="Свойства связи", bg="#f0f0f0", font=("Arial", 12, "bold")
+        ).pack(pady=(20, 5))
+
+        connection_section = tk.Frame(other_sections, bg="#f0f0f0")
+        connection_section.pack(fill="x", padx=10, pady=2)
+
+        style_label = tk.Label(connection_section, text="Тип линии:", bg="#f0f0f0")
+        style_label.pack(anchor="w")
+        add_tooltip(style_label, "Выберите форму линии между карточками")
+
+        style_buttons = tk.Frame(connection_section, bg="#f0f0f0")
+        style_buttons.pack(fill="x", pady=(0, 6))
+
+        btn_style_straight = tk.Radiobutton(
+            style_buttons,
+            text="Прямая",
+            variable=app.var_connection_style,
+            value="straight",
+            bg="#f0f0f0",
+            command=app.on_connection_style_change,
+        )
+        btn_style_straight.pack(side="left", expand=True)
+        add_tooltip(btn_style_straight, "Соединить карточки прямой линией")
+
+        btn_style_elbow = tk.Radiobutton(
+            style_buttons,
+            text="Ломаная",
+            variable=app.var_connection_style,
+            value="elbow",
+            bg="#f0f0f0",
+            command=app.on_connection_style_change,
+        )
+        btn_style_elbow.pack(side="left", expand=True)
+        add_tooltip(btn_style_elbow, "Соединить карточки угловой линией с изломом")
+
+        btn_style_rounded = tk.Radiobutton(
+            style_buttons,
+            text="Закруглённая",
+            variable=app.var_connection_style,
+            value="rounded",
+            bg="#f0f0f0",
+            command=app.on_connection_style_change,
+        )
+        btn_style_rounded.pack(side="left", expand=True)
+        add_tooltip(btn_style_rounded, "Плавная линия с закруглением и кривизной")
+
+        app.connection_style_controls = [
+            btn_style_straight,
+            btn_style_elbow,
+            btn_style_rounded,
+        ]
+
+        radius_frame = tk.Frame(connection_section, bg="#f0f0f0")
+        radius_frame.pack(fill="x")
+        tk.Label(radius_frame, text="Радиус:", bg="#f0f0f0").pack(side="left")
+        radius_scale = tk.Scale(
+            radius_frame,
+            from_=0,
+            to=300,
+            orient="horizontal",
+            resolution=1,
+            variable=app.var_connection_radius,
+            command=app.on_connection_radius_change,
+            length=150,
+            bg="#f0f0f0",
+            highlightthickness=0,
+        )
+        radius_scale.pack(side="left", padx=(6, 0))
+        app.connection_radius_scale = radius_scale
+        add_tooltip(radius_scale, "Настройка длины ручек для закруглённой линии связи")
+
         return sidebar
