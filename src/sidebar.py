@@ -48,9 +48,6 @@ class SidebarFactory:
             "Свернуть или развернуть панель управления (доступно с клавиатуры)",
         )
 
-        tk.Label(manage_section, text="Управление", bg="#f0f0f0",
-                 font=("Arial", 12, "bold")).pack(pady=(5, 5))
-
         btn_add = tk.Button(manage_section, text="Добавить карточку",
                             command=app.add_card_dialog)
         btn_add.pack(fill="x", padx=10, pady=5)
@@ -83,9 +80,6 @@ class SidebarFactory:
         app.btn_delete_cards = btn_delete
         add_tooltip(btn_delete, "Удалить выбранные карточки")
 
-        tk.Label(other_sections, text="Группы / рамки", bg="#f0f0f0",
-                 font=("Arial", 12, "bold")).pack(pady=(20, 5))
-
         btn_add_frame = tk.Button(other_sections, text="Добавить рамку",
                                   command=app.add_frame_dialog)
         btn_add_frame.pack(fill="x", padx=10, pady=5)
@@ -107,9 +101,6 @@ class SidebarFactory:
 
         file_header = tk.Frame(file_section, bg="#f0f0f0")
         file_header.pack(fill="x", pady=(20, 5), padx=10)
-
-        tk.Label(file_header, text="Файл", bg="#f0f0f0",
-                 font=("Arial", 12, "bold")).pack(side="left")
 
         file_collapse_button = tk.Button(
             file_header,
@@ -169,9 +160,6 @@ class SidebarFactory:
                                      command=app.attach_image_from_file)
         btn_attach_image.pack(fill="x", padx=10, pady=5)
         add_tooltip(btn_attach_image, "Добавить изображение к выделенной карточке")
-
-        tk.Label(other_sections, text="Вид", bg="#f0f0f0",
-                 font=("Arial", 12, "bold")).pack(pady=(15, 5))
 
         app.btn_theme = tk.Button(other_sections, text=app.get_theme_button_text(),
                                    command=app.toggle_theme)
