@@ -1,7 +1,15 @@
+import math
 import tkinter as tk
 from typing import Dict, Iterable, Sequence
 
-from .board_model import Card, Connection, Frame
+from .board_model import (
+    Card,
+    Connection,
+    Frame,
+    DEFAULT_CONNECTION_CURVATURE,
+    DEFAULT_CONNECTION_RADIUS,
+    DEFAULT_CONNECTION_STYLE,
+)
 
 
 class CanvasView:
@@ -269,6 +277,33 @@ class CanvasView:
 
         return sx, sy, tx, ty
 
+    def _connection_points(
+        self, connection: Connection, sx: float, sy: float, tx: float, ty: float
+    ) -> tuple[Sequence[float], bool]:
+        if getattr(connection, "style", DEFAULT_CONNECTION_STYLE) != "rounded":
+            return (sx, sy, tx, ty), False
+
+        radius = max(getattr(connection, "radius", DEFAULT_CONNECTION_RADIUS), 0.0)
+        curvature = getattr(
+            connection, "curvature", DEFAULT_CONNECTION_CURVATURE
+        )
+
+        dx = tx - sx
+        dy = ty - sy
+        length = math.hypot(dx, dy) or 1.0
+        nx = -dy / length
+        ny = dx / length
+        offset = radius + curvature
+
+        mx = (sx + tx) / 2 + nx * offset
+        my = (sy + ty) / 2 + ny * offset
+        return (sx, sy, mx, my, tx, ty), True
+
+    def _label_position(self, coords: Sequence[float], smooth: bool) -> tuple[float, float]:
+        if smooth and len(coords) >= 4:
+            return coords[2], coords[3]
+        return (coords[0] + coords[-2]) / 2, (coords[1] + coords[-1]) / 2
+
     def _arrow_for_direction(self, direction: str) -> str:
         return tk.FIRST if direction == "start" else tk.LAST
 
@@ -281,22 +316,21 @@ class CanvasView:
     def draw_connection(self, connection: Connection, from_card: Card, to_card: Card) -> None:
         sx, sy, tx, ty = self._connection_anchors(from_card, to_card, connection)
         arrow = self._arrow_for_direction(connection.direction)
+        coords, smooth = self._connection_points(connection, sx, sy, tx, ty)
+        line_kwargs = {
+            "arrow": arrow,
+            "width": 2,
+            "fill": self.theme["connection"],
+            "tags": ("connection",),
+        }
+        if smooth:
+            line_kwargs["smooth"] = True
 
-        line_id = self.canvas.create_line(
-            sx,
-            sy,
-            tx,
-            ty,
-            arrow=arrow,
-            width=2,
-            fill=self.theme["connection"],
-            tags=("connection",),
-        )
+        line_id = self.canvas.create_line(*coords, **line_kwargs)
 
         label_id = None
         if connection.label:
-            mx = (sx + tx) / 2
-            my = (sy + ty) / 2
+            mx, my = self._label_position(coords, smooth)
             label_id = self.canvas.create_text(
                 mx,
                 my,
@@ -323,12 +357,12 @@ class CanvasView:
             if from_card is None or to_card is None:
                 continue
             sx, sy, tx, ty = self._connection_anchors(from_card, to_card, conn)
+            coords, smooth = self._connection_points(conn, sx, sy, tx, ty)
             if conn.line_id:
-                self.canvas.coords(conn.line_id, sx, sy, tx, ty)
+                self.canvas.coords(conn.line_id, *coords)
                 self.apply_connection_direction(conn)
             if conn.label_id:
-                mx = (sx + tx) / 2
-                my = (sy + ty) / 2
+                mx, my = self._label_position(coords, smooth)
                 self.canvas.coords(conn.label_id, mx, my)
 
     def render_board(

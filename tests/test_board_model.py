@@ -40,6 +40,9 @@ def test_connection_backward_compatibility_and_label_change():
     assert connection.to_id == 2
     assert connection.label == "old"
     assert connection.direction == "end"
+    assert connection.style == "straight"
+    assert connection.radius == 0.0
+    assert connection.curvature == 0.0
 
     connection.label = "updated"
     assert connection.to_primitive() == {
@@ -47,6 +50,9 @@ def test_connection_backward_compatibility_and_label_change():
         "to": 2,
         "label": "updated",
         "direction": "end",
+        "style": "straight",
+        "radius": 0.0,
+        "curvature": 0.0,
     }
 
 
@@ -77,6 +83,26 @@ def test_connection_with_label_preserves_direction_after_toggle():
 
     assert restored.label == "text"
     assert restored.direction == "end"
+
+
+def test_connection_rounded_style_serialization():
+    connection = Connection(
+        from_id=5,
+        to_id=6,
+        label="curvy",
+        direction="start",
+        style="rounded",
+        radius=12.5,
+        curvature=1.5,
+    )
+
+    payload = connection.to_primitive()
+    assert payload["style"] == "rounded"
+    assert payload["radius"] == 12.5
+    assert payload["curvature"] == 1.5
+
+    restored = Connection.from_primitive(payload)
+    assert restored == connection
 
 
 def test_connection_direction_survives_history_undo_redo():
