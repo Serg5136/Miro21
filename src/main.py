@@ -163,6 +163,10 @@ class BoardApp:
         self.active_board_index: int | None = None
         self.board_tab_buttons: list[tk.Button] = []
         self.board_tabs_container: tk.Frame | None = None
+        self.editing_tab_index: int | None = None
+        self.editing_tab_value: tk.StringVar | None = None
+        self.editing_tab_original: str | None = None
+        self.editing_tab_entry: tk.Entry | None = None
 
         # UI helpers
         self.ui_builder = LayoutBuilder()
@@ -828,6 +832,10 @@ class BoardApp:
         self.board_tab_buttons.clear()
 
         for idx, tab in enumerate(self.boards):
+            if idx == self.editing_tab_index:
+                self._render_board_tab_editor(idx, tab)
+                continue
+
             label = tab.name
             if self._is_board_unsaved(tab):
                 label += " *"
@@ -836,11 +844,36 @@ class BoardApp:
                 text=label,
                 anchor="w",
                 command=lambda i=idx: self.switch_board(i),
+                takefocus=True,
             )
             if idx == self.active_board_index:
                 btn.config(relief="sunken", bg="#e8e8e8")
+            btn.bind(
+                "<Double-Button-1>",
+                lambda event, i=idx: (self.start_edit_board_tab(i), "break"),
+            )
             btn.pack(fill="x", padx=4, pady=2)
             self.board_tab_buttons.append(btn)
+
+    def _render_board_tab_editor(self, idx: int, tab: BoardTab) -> None:
+        if self.board_tabs_container is None:
+            return
+
+        if self.editing_tab_value is None:
+            self.editing_tab_value = tk.StringVar(value=tab.name)
+        entry = tk.Entry(
+            self.board_tabs_container,
+            textvariable=self.editing_tab_value,
+            takefocus=True,
+        )
+        entry.aria_label = "Редактирование названия доски"
+        entry.bind("<Return>", lambda event: self.finish_edit_board_tab(save=True))
+        entry.bind("<Escape>", lambda event: self.finish_edit_board_tab(save=False))
+        entry.bind("<FocusOut>", lambda event: self.finish_edit_board_tab(save=False))
+        entry.pack(fill="x", padx=4, pady=2)
+        entry.focus_set()
+        entry.select_range(0, tk.END)
+        self.editing_tab_entry = entry
 
     def create_new_board(self):
         self._persist_current_board_tab()
@@ -862,6 +895,51 @@ class BoardApp:
         self.active_board_index = len(self.boards) - 1
         self.render_board_tabs()
         self.update_controls_state()
+
+    def start_edit_board_tab(self, index: int) -> None:
+        if index < 0 or index >= len(self.boards):
+            return
+
+        self.editing_tab_index = index
+        self.editing_tab_original = self.boards[index].name
+        self.editing_tab_value = tk.StringVar(value=self.boards[index].name)
+        self.editing_tab_entry = None
+        self.render_board_tabs()
+
+    def finish_edit_board_tab(self, save: bool) -> None:
+        if self.editing_tab_index is None:
+            return
+
+        idx = self.editing_tab_index
+        original = self.editing_tab_original or self.boards[idx].name
+        value = (self.editing_tab_value.get().strip() if self.editing_tab_value else "")
+
+        self.editing_tab_index = None
+        self.editing_tab_value = None
+        self.editing_tab_original = None
+        self.editing_tab_entry = None
+
+        if not save:
+            self.render_board_tabs()
+            return
+
+        if not value:
+            messagebox.showerror("Переименование доски", "Название доски не может быть пустым.")
+            value = original
+
+        try:
+            self._apply_board_name(idx, value)
+        except Exception as exc:  # pragma: no cover - defensive
+            messagebox.showerror("Переименование доски", f"Не удалось обновить название: {exc}")
+            self._apply_board_name(idx, original)
+
+    def _apply_board_name(self, index: int, new_name: str) -> None:
+        if index < 0 or index >= len(self.boards):
+            return
+        self.boards[index].name = new_name
+        self.render_board_tabs()
+        if index == self.active_board_index:
+            self.update_unsaved_flag()
 
     def switch_board(self, index: int):
         if index == self.active_board_index:
