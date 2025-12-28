@@ -112,17 +112,34 @@ class CanvasFactory:
 
 
 class MinimapFactory:
+    def __init__(self, collapsed_size: int = 72):
+        self.collapsed_size = collapsed_size
+
     def create(self, app) -> tk.Frame:
         container = tk.Frame(app.canvas, bg="#f8f8f8", highlightthickness=1, highlightbackground="#cccccc")
         container.place(relx=1.0, rely=0.0, x=-10, y=10, anchor="ne")
 
+        expanded_frame = tk.Frame(container, bg="#f8f8f8")
+        expanded_frame.pack(fill="both", expand=True)
+
+        header = tk.Frame(expanded_frame, bg="#f8f8f8")
+        header.pack(fill="x", padx=8, pady=(8, 4))
+
         minimap_label = tk.Label(
-            container, text="Мини карта", bg="#f8f8f8", font=("Arial", 12, "bold")
+            header, text="Мини карта", bg="#f8f8f8", font=("Arial", 12, "bold")
         )
-        minimap_label.pack(fill="x", padx=8, pady=(8, 4))
+        minimap_label.pack(side="left", fill="x", expand=True)
+
+        toggle_button = tk.Button(
+            header,
+            text="−",
+            width=2,
+            command=lambda: set_collapsed(True),
+        )
+        toggle_button.pack(side="right", padx=(6, 0))
 
         app.minimap = tk.Canvas(
-            container,
+            expanded_frame,
             width=240,
             height=160,
             bg=app.theme["minimap_bg"],
@@ -135,6 +152,62 @@ class MinimapFactory:
         add_canvas_tooltip(app.minimap, "minimap_card", "Карточка на доске")
         add_canvas_tooltip(app.minimap, "minimap_frame", "Рамка на доске")
         add_canvas_tooltip(app.minimap, "minimap_viewport", "Текущая область просмотра")
+
+        collapsed_frame = tk.Frame(
+            container,
+            bg="#f8f8f8",
+            width=self.collapsed_size,
+            height=self.collapsed_size,
+        )
+        collapsed_frame.pack_propagate(False)
+        collapsed_button = tk.Button(
+            collapsed_frame,
+            text="+",
+            font=("Arial", 16, "bold"),
+            relief="flat",
+            bd=0,
+            bg="#f8f8f8",
+            fg="#333333",
+            activebackground="#e8e8e8",
+            activeforeground="#000000",
+            highlightthickness=1,
+            highlightbackground="#cccccc",
+            highlightcolor="#666666",
+            command=lambda: set_collapsed(False),
+        )
+        collapsed_button.pack(expand=True, fill="both")
+        collapsed_frame.pack_forget()
+
+        app.minimap_collapsed = False
+        app.minimap_toggle_button = toggle_button
+        app.minimap_collapsed_button = collapsed_button
+        app.minimap_container = container
+        app.minimap_collapsed_frame = collapsed_frame
+        app.minimap_expanded_frame = expanded_frame
+
+        def set_collapsed(collapsed: bool):
+            app.minimap_collapsed = collapsed
+            if collapsed:
+                container.update_idletasks()
+                app._minimap_previous_size = (
+                    max(container.winfo_width(), 1),
+                    max(container.winfo_height(), 1),
+                )
+                expanded_frame.pack_forget()
+                collapsed_frame.pack(fill="both", expand=True)
+                container.config(width=self.collapsed_size, height=self.collapsed_size)
+                toggle_button.config(text="+")
+            else:
+                collapsed_frame.pack_forget()
+                expanded_frame.pack(fill="both", expand=True)
+                prev_w, prev_h = getattr(app, "_minimap_previous_size", (None, None))
+                container.config(width=prev_w or "", height=prev_h or "")
+                toggle_button.config(text="−")
+                if hasattr(app, "update_minimap"):
+                    app.update_minimap()
+            container.update_idletasks()
+
+        app.toggle_minimap_collapsed = lambda: set_collapsed(not app.minimap_collapsed)
 
         add_tooltip(
             minimap_label,
