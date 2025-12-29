@@ -819,8 +819,14 @@ class BoardApp:
         self.boards[self.active_board_index].history = self.history
         self.boards[self.active_board_index].saved_history_index = self.saved_history_index
 
-    def _generate_board_name(self, number: int) -> str:
-        return f"Доска {number}"
+    def _generate_board_name(self, start_number: int) -> str:
+        existing_names = {tab.name for tab in self.boards}
+        number = start_number
+        while True:
+            candidate = f"Доска {number}"
+            if candidate not in existing_names:
+                return candidate
+            number += 1
 
     def _is_board_unsaved(self, tab: BoardTab) -> bool:
         return tab.history.index != tab.saved_history_index
@@ -949,6 +955,15 @@ class BoardApp:
                 if not value:
                     messagebox.showerror(
                         "Переименование доски", "Название доски не может быть пустым."
+                    )
+                    value = original
+
+                if any(
+                    tab.name == value for i, tab in enumerate(self.boards) if i != idx
+                ):
+                    messagebox.showerror(
+                        "Переименование доски",
+                        "Доска с таким названием уже существует.",
                     )
                     value = original
 

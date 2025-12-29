@@ -42,3 +42,31 @@ def test_board_tab_rename_via_double_click_and_enter(tk_root, monkeypatch):
     assert app.boards[0].name == "Командная доска"
     assert app.editing_tab_index is None
     assert any(btn.cget("text").startswith("Командная доска") for btn in app.board_tab_buttons)
+
+
+def test_new_board_name_is_unique(tk_root, monkeypatch):
+    app = _build_app(tk_root, monkeypatch)
+
+    # Занимаем имя "Доска 2" заранее
+    app.boards[0].name = "Доска 2"
+
+    app.create_new_board()
+
+    assert app.boards[-1].name == "Доска 3"
+
+
+def test_board_rename_rejects_duplicates(tk_root, monkeypatch):
+    errors: list[tuple] = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda *args, **kwargs: errors.append(args))
+
+    app = _build_app(tk_root, monkeypatch)
+    app.create_new_board()
+
+    original_name = app.boards[0].name
+
+    app.start_edit_board_tab(0)
+    app.editing_tab_value.set(app.boards[1].name)  # Пытаемся использовать уже существующее имя
+    app.finish_edit_board_tab(save=True)
+
+    assert app.boards[0].name == original_name
+    assert errors, "Ожидали сообщение об ошибке"
