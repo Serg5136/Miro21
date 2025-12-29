@@ -113,11 +113,13 @@ class CanvasFactory:
 
 
 class MinimapFactory:
-    def __init__(self, collapsed_size: int = 72):
+    def __init__(self, collapsed_size: int = 36):
         self.collapsed_size = collapsed_size
 
     def create(self, app) -> tk.Frame:
-        container = tk.Frame(app.canvas, bg="#f8f8f8", highlightthickness=1, highlightbackground="#cccccc")
+        container = tk.Frame(
+            app.canvas, bg="#f8f8f8", highlightthickness=1, highlightbackground="#cccccc"
+        )
         container.place(relx=1.0, rely=0.0, x=-10, y=10, anchor="ne")
 
         expanded_frame = tk.Frame(container, bg="#f8f8f8")
@@ -159,12 +161,13 @@ class MinimapFactory:
             bg="#f8f8f8",
             width=self.collapsed_size,
             height=self.collapsed_size,
+            highlightthickness=0,
         )
         collapsed_frame.pack_propagate(False)
         collapsed_button = tk.Button(
             collapsed_frame,
             text="+",
-            font=("Arial", 16, "bold"),
+            font=("Arial", 10, "bold"),
             relief="flat",
             bd=0,
             bg="#f8f8f8",
@@ -195,6 +198,7 @@ class MinimapFactory:
                     max(container.winfo_height(), 1),
                 )
                 expanded_frame.pack_forget()
+                collapsed_frame.config(width=self.collapsed_size, height=self.collapsed_size)
                 collapsed_frame.pack(fill="both", expand=True)
                 container.config(width=self.collapsed_size, height=self.collapsed_size)
                 toggle_button.config(text="+")
