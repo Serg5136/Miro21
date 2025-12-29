@@ -163,10 +163,12 @@ class BoardApp:
         self.active_board_index: int | None = None
         self.board_tab_buttons: list[tk.Button] = []
         self.board_tabs_container: tk.Frame | None = None
+        self.board_add_button: tk.Button | None = None
         self.editing_tab_index: int | None = None
         self.editing_tab_value: tk.StringVar | None = None
         self.editing_tab_original: str | None = None
         self.editing_tab_entry: tk.Entry | None = None
+        self._finishing_tab_edit = False
 
         # UI helpers
         self.ui_builder = LayoutBuilder()
@@ -867,13 +869,23 @@ class BoardApp:
             takefocus=True,
         )
         entry.aria_label = "Редактирование названия доски"
-        entry.bind("<Return>", lambda event: self.finish_edit_board_tab(save=True))
-        entry.bind("<Escape>", lambda event: self.finish_edit_board_tab(save=False))
+        entry.bind(
+            "<Return>",
+            lambda event: self._handle_board_tab_editor_key(event, save=True),
+        )
+        entry.bind(
+            "<Escape>",
+            lambda event: self._handle_board_tab_editor_key(event, save=False),
+        )
         entry.bind("<FocusOut>", lambda event: self.finish_edit_board_tab(save=False))
         entry.pack(fill="x", padx=4, pady=2)
         entry.focus_set()
         entry.select_range(0, tk.END)
         self.editing_tab_entry = entry
+
+    def _handle_board_tab_editor_key(self, _event: tk.Event, save: bool) -> str:
+        self.finish_edit_board_tab(save=save)
+        return "break"
 
     def create_new_board(self):
         self._persist_current_board_tab()
@@ -900,6 +912,7 @@ class BoardApp:
         if index < 0 or index >= len(self.boards):
             return
 
+        self._set_board_add_button_focusable(False)
         self.editing_tab_index = index
         self.editing_tab_original = self.boards[index].name
         self.editing_tab_value = tk.StringVar(value=self.boards[index].name)
@@ -907,39 +920,59 @@ class BoardApp:
         self.render_board_tabs()
 
     def finish_edit_board_tab(self, save: bool) -> None:
-        if self.editing_tab_index is None:
+        if self.editing_tab_index is None or self._finishing_tab_edit:
             return
 
-        idx = self.editing_tab_index
-        original = self.editing_tab_original or self.boards[idx].name
-        value = (self.editing_tab_value.get().strip() if self.editing_tab_value else "")
-
-        self.editing_tab_index = None
-        self.editing_tab_value = None
-        self.editing_tab_original = None
-        self.editing_tab_entry = None
-
-        if not save:
-            self.render_board_tabs()
-            return
-
-        if not value:
-            messagebox.showerror("Переименование доски", "Название доски не может быть пустым.")
-            value = original
-
+        self._finishing_tab_edit = True
         try:
-            self._apply_board_name(idx, value)
-        except Exception as exc:  # pragma: no cover - defensive
-            messagebox.showerror("Переименование доски", f"Не удалось обновить название: {exc}")
-            self._apply_board_name(idx, original)
+            idx = self.editing_tab_index
+            original = self.editing_tab_original or self.boards[idx].name
+            value = self.editing_tab_value.get().strip() if self.editing_tab_value else ""
+
+            self.editing_tab_index = None
+            self.editing_tab_value = None
+            self.editing_tab_original = None
+            self.editing_tab_entry = None
+            self._set_board_add_button_focusable(True)
+
+            if save:
+                if not value:
+                    messagebox.showerror(
+                        "Переименование доски", "Название доски не может быть пустым."
+                    )
+                    value = original
+
+                try:
+                    self._apply_board_name(idx, value)
+                except Exception as exc:  # pragma: no cover - defensive
+                    messagebox.showerror(
+                        "Переименование доски", f"Не удалось обновить название: {exc}"
+                    )
+                    self._apply_board_name(idx, original)
+
+            self.render_board_tabs()
+            self._focus_active_board_tab_button()
+        finally:
+            self._finishing_tab_edit = False
 
     def _apply_board_name(self, index: int, new_name: str) -> None:
         if index < 0 or index >= len(self.boards):
             return
         self.boards[index].name = new_name
-        self.render_board_tabs()
-        if index == self.active_board_index:
-            self.update_unsaved_flag()
+
+    def _focus_active_board_tab_button(self) -> None:
+        if self.active_board_index is None:
+            return
+        if 0 <= self.active_board_index < len(self.board_tab_buttons):
+            try:
+                self.board_tab_buttons[self.active_board_index].focus_set()
+            except tk.TclError:
+                pass
+
+    def _set_board_add_button_focusable(self, focusable: bool) -> None:
+        if self.board_add_button is None:
+            return
+        self.board_add_button.config(takefocus=focusable)
 
     def switch_board(self, index: int):
         if index == self.active_board_index:

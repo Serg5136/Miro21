@@ -95,6 +95,7 @@ class BoardTabsFactory:
         add_button = tk.Button(container, text="+ Новая доска", command=app.create_new_board)
         add_button.pack(fill="x", padx=10, pady=(0, 10))
         add_tooltip(add_button, "Создать пустую доску и переключиться на неё")
+        app.board_add_button = add_button
 
         tabs_frame = tk.Frame(container, bg="#f6f6f6")
         tabs_frame.pack(fill="both", expand=True, padx=6, pady=(0, 10))
