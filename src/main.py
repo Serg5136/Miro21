@@ -854,6 +854,14 @@ class BoardApp:
                 "<Double-Button-1>",
                 lambda event, i=idx: (self.start_edit_board_tab(i), "break"),
             )
+            btn.bind(
+                "<Button-3>",
+                lambda event, i=idx: (self.start_edit_board_tab(i), "break"),
+            )
+            btn.bind(
+                "<Control-Button-1>",
+                lambda event, i=idx: (self.start_edit_board_tab(i), "break"),
+            )
             btn.pack(fill="x", padx=4, pady=2)
             self.board_tab_buttons.append(btn)
 
@@ -910,6 +918,8 @@ class BoardApp:
 
     def start_edit_board_tab(self, index: int) -> None:
         if index < 0 or index >= len(self.boards):
+            return
+        if self.editing_tab_index == index:
             return
 
         self._set_board_add_button_focusable(False)
