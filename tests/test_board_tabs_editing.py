@@ -70,3 +70,19 @@ def test_board_rename_rejects_duplicates(tk_root, monkeypatch):
 
     assert app.boards[0].name == original_name
     assert errors, "Ожидали сообщение об ошибке"
+
+
+def test_editing_entry_is_removed_after_finish(tk_root, monkeypatch):
+    app = _build_app(tk_root, monkeypatch)
+
+    app.start_edit_board_tab(0)
+    entry = app.editing_tab_entry
+
+    assert entry is not None and entry.winfo_exists()
+
+    app.finish_edit_board_tab(save=False)
+    tk_root.update_idletasks()
+
+    assert app.editing_tab_entry is None
+    assert not entry.winfo_exists()
+    assert not any(isinstance(child, tk.Entry) for child in app.board_tabs_container.winfo_children())

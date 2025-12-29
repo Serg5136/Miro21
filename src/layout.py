@@ -97,6 +97,11 @@ class BoardTabsFactory:
         add_tooltip(add_button, "Создать пустую доску и переключиться на неё")
         app.board_add_button = add_button
 
+        delete_button = tk.Button(container, text="Удалить доску", command=app.delete_current_board)
+        delete_button.pack(fill="x", padx=10, pady=(0, 10))
+        add_tooltip(delete_button, "Удалить текущую доску (нельзя удалить последнюю)")
+        app.board_delete_button = delete_button
+
         tabs_frame = tk.Frame(container, bg="#f6f6f6")
         tabs_frame.pack(fill="both", expand=True, padx=6, pady=(0, 10))
 

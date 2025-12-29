@@ -164,6 +164,7 @@ class BoardApp:
         self.board_tab_buttons: list[tk.Button] = []
         self.board_tabs_container: tk.Frame | None = None
         self.board_add_button: tk.Button | None = None
+        self.board_delete_button: tk.Button | None = None
         self.editing_tab_index: int | None = None
         self.editing_tab_value: tk.StringVar | None = None
         self.editing_tab_original: str | None = None
@@ -831,9 +832,19 @@ class BoardApp:
     def _is_board_unsaved(self, tab: BoardTab) -> bool:
         return tab.history.index != tab.saved_history_index
 
+    def _destroy_editing_tab_entry(self) -> None:
+        if self.editing_tab_entry is not None:
+            try:
+                self.editing_tab_entry.destroy()
+            except tk.TclError:
+                pass
+            self.editing_tab_entry = None
+
     def render_board_tabs(self):
         if self.board_tabs_container is None:
             return
+
+        self._destroy_editing_tab_entry()
 
         for btn in self.board_tab_buttons:
             btn.destroy()
@@ -928,6 +939,7 @@ class BoardApp:
         if self.editing_tab_index == index:
             return
 
+        self._destroy_editing_tab_entry()
         self._set_board_add_button_focusable(False)
         self.editing_tab_index = index
         self.editing_tab_original = self.boards[index].name
@@ -945,10 +957,10 @@ class BoardApp:
             original = self.editing_tab_original or self.boards[idx].name
             value = self.editing_tab_value.get().strip() if self.editing_tab_value else ""
 
+            self._destroy_editing_tab_entry()
             self.editing_tab_index = None
             self.editing_tab_value = None
             self.editing_tab_original = None
-            self.editing_tab_entry = None
             self._set_board_add_button_focusable(True)
 
             if save:
@@ -999,13 +1011,10 @@ class BoardApp:
             return
         self.board_add_button.config(takefocus=focusable)
 
-    def switch_board(self, index: int):
-        if index == self.active_board_index:
-            return
+    def _load_board_at_index(self, index: int) -> None:
         if index < 0 or index >= len(self.boards):
             return
 
-        self._persist_current_board_tab()
         self.active_board_index = index
         target = self.boards[index]
 
@@ -1028,6 +1037,37 @@ class BoardApp:
         self.update_controls_state()
         self.render_board_tabs()
         self.update_connect_mode_indicator()
+
+    def switch_board(self, index: int):
+        if index == self.active_board_index:
+            return
+        if index < 0 or index >= len(self.boards):
+            return
+
+        self._persist_current_board_tab()
+        self._load_board_at_index(index)
+
+    def delete_current_board(self):
+        if self.active_board_index is None:
+            return
+        if len(self.boards) <= 1:
+            messagebox.showinfo(
+                "Удаление доски", "Нельзя удалить последнюю доступную доску."
+            )
+            return
+
+        self.finish_edit_board_tab(save=False)
+
+        target = self.boards[self.active_board_index]
+        if not messagebox.askyesno(
+            "Удаление доски", f"Удалить доску «{target.name}»? Это действие нельзя отменить."
+        ):
+            return
+
+        delete_index = self.active_board_index
+        del self.boards[delete_index]
+        next_index = min(delete_index, len(self.boards) - 1)
+        self._load_board_at_index(next_index)
 
     def write_autosave(self, state=None):
         try:
@@ -1186,6 +1226,10 @@ class BoardApp:
             self.btn_delete_cards.config(state="normal" if has_card_selection else "disabled")
         if hasattr(self, "btn_toggle_frame"):
             self.btn_toggle_frame.config(state="normal" if has_frame_selection else "disabled")
+        if hasattr(self, "board_delete_button"):
+            self.board_delete_button.config(
+                state="normal" if len(self.boards) > 1 else "disabled"
+            )
 
         if hasattr(self, "connection_style_controls"):
             state = "normal" if has_connection_selection else "disabled"
