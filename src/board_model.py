@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Literal
 
-SCHEMA_VERSION = 5
-SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4, SCHEMA_VERSION}
+SCHEMA_VERSION = 6
+SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4, 5, SCHEMA_VERSION}
 
 
 @dataclass
@@ -376,3 +376,66 @@ class BoardData:
             frames[frame.id] = frame
 
         return BoardData(cards=cards, connections=connections, frames=frames)
+
+
+@dataclass
+class WorkspaceBoard:
+    name: str
+    data: BoardData
+    saved_history_index: int = -1
+
+    def to_primitive(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "data": self.data.to_primitive(),
+            "saved_history_index": self.saved_history_index,
+        }
+
+    @staticmethod
+    def from_primitive(data: Dict[str, Any], fallback_name: str) -> "WorkspaceBoard":
+        board_name = data.get("name") or fallback_name
+        board_data = data.get("data") or data
+        saved_history_index = data.get("saved_history_index", -1)
+        return WorkspaceBoard(
+            name=board_name,
+            data=BoardData.from_primitive(board_data),
+            saved_history_index=saved_history_index,
+        )
+
+
+@dataclass
+class WorkspaceData:
+    boards: List[WorkspaceBoard]
+    active_board_index: int = 0
+
+    def to_primitive(self) -> Dict[str, Any]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "active_board_index": self.active_board_index,
+            "boards": [board.to_primitive() for board in self.boards],
+        }
+
+    @staticmethod
+    def from_primitive(data: Dict[str, Any]) -> "WorkspaceData":
+        # Новый формат workspace
+        if isinstance(data, dict) and "boards" in data:
+            boards_data = data.get("boards", []) or []
+            boards: List[WorkspaceBoard] = []
+            for idx, board_item in enumerate(boards_data, start=1):
+                boards.append(WorkspaceBoard.from_primitive(board_item, f"Доска {idx}"))
+            if not boards:
+                boards = [
+                    WorkspaceBoard(
+                        name="Доска 1",
+                        data=BoardData(cards={}, connections=[], frames={}),
+                        saved_history_index=-1,
+                    )
+                ]
+            active_index = data.get("active_board_index", 0)
+            if active_index < 0 or active_index >= len(boards):
+                active_index = 0
+            return WorkspaceData(boards=boards, active_board_index=active_index)
+
+        # Старый формат: одна доска
+        board = WorkspaceBoard.from_primitive(data, "Доска 1")
+        return WorkspaceData(boards=[board], active_board_index=0)
