@@ -72,6 +72,32 @@ def test_board_rename_rejects_duplicates(tk_root, monkeypatch):
     assert errors, "Ожидали сообщение об ошибке"
 
 
+def test_board_rename_rejects_invalid_characters(tk_root, monkeypatch):
+    errors: list[tuple] = []
+    monkeypatch.setattr(main.messagebox, "showerror", lambda *args, **kwargs: errors.append(args))
+
+    app = _build_app(tk_root, monkeypatch)
+    original_name = app.boards[0].name
+
+    app.start_edit_board_tab(0)
+    app.editing_tab_value.set("Неверное/имя?")
+    app.finish_edit_board_tab(save=True)
+
+    assert app.boards[0].name == original_name
+    assert any("Допустимы" in err[1] for err in errors)
+
+
+def test_board_tab_context_menu_triggers_rename(tk_root, monkeypatch):
+    app = _build_app(tk_root, monkeypatch)
+
+    app.board_context_tab_index = 0
+    app._context_rename_board_tab()
+    tk_root.update_idletasks()
+
+    assert app.editing_tab_index == 0
+    assert app.editing_tab_entry is not None
+
+
 def test_editing_entry_is_removed_after_finish(tk_root, monkeypatch):
     app = _build_app(tk_root, monkeypatch)
 

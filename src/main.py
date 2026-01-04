@@ -7,6 +7,7 @@ from tkinter import colorchooser, filedialog, messagebox, simpledialog
 import copy
 import io
 from pathlib import Path
+import re
 from typing import Dict, List
 from .autosave import AutoSaveService
 from .board_model import (
@@ -128,6 +129,7 @@ class BoardApp:
         self.saved_history_index = -1
         self.unsaved_changes = False
         self.autosave_service = AutoSaveService()
+        self.board_name_pattern = re.compile(r"^[\w\dА-Яа-яЁё _.,'’()-]+$")
 
         # Буфер обмена (копирование карточек)
         self.clipboard = None  # {"cards":[...], "connections":[...], "center":(x,y)}
@@ -154,6 +156,7 @@ class BoardApp:
         self.context_connection = None
         self.context_click_x = 0
         self.context_click_y = 0
+        self.board_context_tab_index: int | None = None
 
         # Мини-карта
         self.minimap = None
@@ -165,6 +168,7 @@ class BoardApp:
         self.board_tabs_container: tk.Frame | None = None
         self.board_add_button: tk.Button | None = None
         self.board_delete_button: tk.Button | None = None
+        self.board_tab_menu: tk.Menu | None = None
         self.editing_tab_index: int | None = None
         self.editing_tab_value: tk.StringVar | None = None
         self.editing_tab_original: str | None = None
@@ -311,7 +315,14 @@ class BoardApp:
             label="Удалить связь",
             command=self._context_delete_connection,
         )
-    
+
+        # Меню вкладок досок
+        self.board_tab_menu = tk.Menu(self.root, tearoff=0)
+        self.board_tab_menu.add_command(
+            label="Переименовать",
+            command=self._context_rename_board_tab,
+        )
+
         # Меню пустого места
         self.canvas_menu = tk.Menu(self.root, tearoff=0)
         self.canvas_menu.add_command(
@@ -801,7 +812,10 @@ class BoardApp:
 
     def update_unsaved_flag(self):
         self.unsaved_changes = (self.history.index != self.saved_history_index)
-        title = "Mini Miro Board (Python)"
+        title_parts = ["Mini Miro Board (Python)"]
+        if self.active_board_index is not None and self.active_board_index < len(self.boards):
+            title_parts.append(self.boards[self.active_board_index].name)
+        title = " — ".join(title_parts)
         if self.unsaved_changes:
             title += " *"
         self.root.title(title)
@@ -873,7 +887,7 @@ class BoardApp:
             )
             btn.bind(
                 "<Button-3>",
-                lambda event, i=idx: (self.start_edit_board_tab(i), "break"),
+                lambda event, i=idx: (self._show_board_tab_menu(event, i), "break"),
             )
             btn.bind(
                 "<Control-Button-1>",
@@ -907,6 +921,26 @@ class BoardApp:
         entry.focus_set()
         entry.select_range(0, tk.END)
         self.editing_tab_entry = entry
+
+    def _show_board_tab_menu(self, event: tk.Event, index: int) -> None:
+        self.board_context_tab_index = index
+        if self.board_tab_menu is None:
+            return
+        try:
+            self.board_tab_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.board_tab_menu.grab_release()
+
+    def _context_rename_board_tab(self) -> None:
+        target_index = (
+            self.board_context_tab_index
+            if self.board_context_tab_index is not None
+            else self.active_board_index
+        )
+        if target_index is None:
+            return
+        self.start_edit_board_tab(target_index)
+        self.board_context_tab_index = None
 
     def _handle_board_tab_editor_key(self, _event: tk.Event, save: bool) -> str:
         self.finish_edit_board_tab(save=save)
@@ -952,6 +986,7 @@ class BoardApp:
             return
 
         self._finishing_tab_edit = True
+        self.board_context_tab_index = None
         try:
             idx = self.editing_tab_index
             original = self.editing_tab_original or self.boards[idx].name
@@ -967,6 +1002,13 @@ class BoardApp:
                 if not value:
                     messagebox.showerror(
                         "Переименование доски", "Название доски не может быть пустым."
+                    )
+                    value = original
+
+                if value and not self.board_name_pattern.match(value):
+                    messagebox.showerror(
+                        "Переименование доски",
+                        "Допустимы только буквы, цифры, пробелы и знаки -_.,'’()",
                     )
                     value = original
 
@@ -986,8 +1028,7 @@ class BoardApp:
                         "Переименование доски", f"Не удалось обновить название: {exc}"
                     )
                     self._apply_board_name(idx, original)
-
-            self.render_board_tabs()
+            self.update_unsaved_flag()
             self._focus_active_board_tab_button()
         finally:
             self._finishing_tab_edit = False
@@ -996,6 +1037,7 @@ class BoardApp:
         if index < 0 or index >= len(self.boards):
             return
         self.boards[index].name = new_name
+        self.write_autosave()
 
     def _focus_active_board_tab_button(self) -> None:
         if self.active_board_index is None:
