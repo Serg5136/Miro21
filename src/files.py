@@ -260,11 +260,31 @@ def _validate_board_data(data: Dict[str, Any]) -> None:
             f"{version}. Ожидается один из: {sorted(SUPPORTED_SCHEMA_VERSIONS)}."
         )
 
+    # Формат workspace: ожидается список досок с данными
+    if "boards" in data:
+        boards = data.get("boards")
+        if not isinstance(boards, list):
+            raise BoardFileError("Некорректный формат: поле boards должно быть списком.")
+        if not boards:
+            raise BoardFileError("Файл не содержит ни одной доски (boards).")
+        for idx, board in enumerate(boards, start=1):
+            if not isinstance(board, dict):
+                raise BoardFileError(
+                    f"Некорректный формат доски №{idx}: ожидается объект с данными."
+                )
+            payload = board.get("data", board)
+            _validate_single_board(payload, suffix=f" (доска №{idx})")
+        return
+
+    _validate_single_board(data)
+
+
+def _validate_single_board(data: Dict[str, Any], *, suffix: str = "") -> None:
     missing = [key for key in REQUIRED_KEYS if key not in data]
     if missing:
         missing_str = ", ".join(missing)
         raise BoardFileError(
-            f"В файле отсутствуют обязательные разделы: {missing_str}."
+            f"В файле отсутствуют обязательные разделы{suffix}: {missing_str}."
         )
 
     list_checks = {
@@ -273,10 +293,12 @@ def _validate_board_data(data: Dict[str, Any]) -> None:
         "frames": list,
     }
     bad_types = [
-        key for key, expected_type in list_checks.items() if not isinstance(data[key], expected_type)
+        key
+        for key, expected_type in list_checks.items()
+        if not isinstance(data.get(key, None), expected_type)
     ]
     if bad_types:
         readable = ", ".join(bad_types)
         raise BoardFileError(
-            f"Некорректный формат разделов: ожидаются списки для {readable}."
+            f"Некорректный формат разделов{suffix}: ожидаются списки для {readable}."
         )

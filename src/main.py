@@ -21,6 +21,8 @@ from .board_model import (
     DEFAULT_CONNECTION_DIRECTION,
     Frame as ModelFrame,
     bulk_update_card_colors,
+    WorkspaceData,
+    WorkspaceBoard,
 )
 from .canvas_view import CanvasView
 from .config import THEMES, load_theme_settings, save_theme_settings
@@ -659,10 +661,7 @@ class BoardApp:
             if res:  # Да
                 try:
                     data = self.autosave_service.load()
-                    self.set_board_from_data(data)
-                    self.history.clear_and_init(self.get_board_data())
-                    self._set_saved_history_index(-1)
-                    self.push_history()
+                    self._apply_workspace_data(data, use_saved_indexes=True)
                     restored = True
                 except Exception as e:
                     messagebox.showerror("Ошибка автозагрузки", str(e))
@@ -673,25 +672,18 @@ class BoardApp:
                 restored = False
 
         if not restored:
-            self.canvas.delete("all")
-            self.cards.clear()
-            self.connections.clear()
-            self.frames.clear()
-            self.selected_card_id = None
-            self.selected_cards.clear()
-            self.selected_frame_id = None
-            self.selected_connection = None
-            self.set_connect_mode(False)
-            self.zoom_factor = 1.0
-            self.canvas.config(scrollregion=(0, 0, 4000, 4000),
-                               bg=self.theme["bg"])
-            self.next_card_id = 1
-            self.next_frame_id = 1
-
-            self.history.clear_and_init(self.get_board_data())
-            self.draw_grid()
-            self.push_history()
-            self._set_saved_history_index(self.history.index)
+            empty_board = BoardData(cards={}, connections=[], frames={}).to_primitive()
+            workspace = WorkspaceData(
+                boards=[
+                    WorkspaceBoard(
+                        name=self._generate_board_name(1),
+                        data=BoardData.from_primitive(empty_board),
+                        saved_history_index=0,
+                    )
+                ],
+                active_board_index=0,
+            )
+            self._apply_workspace(workspace)
 
         self.update_unsaved_flag()
         self.update_minimap()
@@ -700,14 +692,70 @@ class BoardApp:
         self.boards.clear()
         self.active_board_index = None
         self.init_board_state()
-        initial_tab = BoardTab(
-            name=self._generate_board_name(1),
-            history=self.history,
-            saved_history_index=self.saved_history_index,
-        )
-        self.boards.append(initial_tab)
-        self.active_board_index = 0
-        self.render_board_tabs()
+
+    def _apply_workspace(self, workspace: WorkspaceData, *, use_saved_indexes: bool = True) -> None:
+        self.boards = []
+        for idx, workspace_board in enumerate(workspace.boards, start=1):
+            state = workspace_board.data.to_primitive()
+            history = History()
+            history.clear_and_init(state)
+            history.push(state)
+            saved_index = (
+                workspace_board.saved_history_index if use_saved_indexes else -1
+            )
+            self.boards.append(
+                BoardTab(
+                    name=workspace_board.name or self._generate_board_name(idx),
+                    history=history,
+                    saved_history_index=saved_index,
+                )
+            )
+
+        if not self.boards:
+            empty_state = BoardData(cards={}, connections=[], frames={}).to_primitive()
+            history = History()
+            history.clear_and_init(empty_state)
+            history.push(empty_state)
+            self.boards.append(
+                BoardTab(
+                    name=self._generate_board_name(1),
+                    history=history,
+                    saved_history_index=-1,
+                )
+            )
+
+        target_index = workspace.active_board_index
+        if target_index < 0 or target_index >= len(self.boards):
+            target_index = 0
+
+        self._load_board_at_index(target_index)
+
+    def _apply_workspace_data(self, payload, *, use_saved_indexes: bool = True) -> None:
+        workspace = WorkspaceData.from_primitive(payload)
+        self._apply_workspace(workspace, use_saved_indexes=use_saved_indexes)
+
+    def _build_workspace_data(self, *, mark_saved: bool = False) -> dict:
+        self._persist_current_board_tab()
+        boards: list[WorkspaceBoard] = []
+        for idx, tab in enumerate(self.boards, start=1):
+            state = tab.history.current_state()
+            if state is None:
+                state = BoardData(cards={}, connections=[], frames={}).to_primitive()
+            saved_index = tab.saved_history_index
+            if mark_saved:
+                saved_index = tab.history.index
+                tab.saved_history_index = saved_index
+            boards.append(
+                WorkspaceBoard(
+                    name=tab.name or self._generate_board_name(idx),
+                    data=BoardData.from_primitive(state),
+                    saved_history_index=saved_index,
+                )
+            )
+
+        active_index = self.active_board_index if self.active_board_index is not None else 0
+        workspace = WorkspaceData(boards=boards, active_board_index=active_index)
+        return workspace.to_primitive()
 
     def get_board_data(self):
         """
@@ -792,7 +840,7 @@ class BoardApp:
         state = self.get_board_data()
         self.history.push(state)
         self.update_unsaved_flag()
-        self.write_autosave(state)
+        self.write_autosave()
         self.update_minimap()
         self.update_controls_state()
 
@@ -801,7 +849,7 @@ class BoardApp:
         if state is None:
             return
         self.update_unsaved_flag()
-        self.write_autosave(state)
+        self.write_autosave()
         self.update_minimap()
         self.update_controls_state()
 
@@ -810,7 +858,7 @@ class BoardApp:
         if state is None:
             return
         self.update_unsaved_flag()
-        self.write_autosave(state)
+        self.write_autosave()
         self.update_minimap()
         self.update_controls_state()
 
@@ -970,6 +1018,7 @@ class BoardApp:
         self.active_board_index = len(self.boards) - 1
         self.render_board_tabs()
         self.update_controls_state()
+        self.write_autosave()
 
     def start_edit_board_tab(self, index: int) -> None:
         if index < 0 or index >= len(self.boards):
@@ -1070,14 +1119,13 @@ class BoardApp:
         state = self.history.current_state()
         if state is None:
             state = BoardData(cards={}, connections=[], frames={}).to_primitive()
-            self.set_board_from_data(state)
             self.history.clear_and_init(state)
             self.push_history()
             self._set_saved_history_index(self.history.index)
-        else:
-            self.set_board_from_data(state)
 
-        self.write_autosave(state)
+        self.set_board_from_data(state)
+
+        self.write_autosave()
         self.update_unsaved_flag()
         self.update_minimap()
         self.update_controls_state()
@@ -1117,7 +1165,7 @@ class BoardApp:
 
     def write_autosave(self, state=None):
         try:
-            data = state if state is not None else self.get_board_data()
+            data = state if state is not None else self._build_workspace_data()
             self.autosave_service.save(data)
         except Exception:
             pass
@@ -3548,7 +3596,7 @@ class BoardApp:
     # ---------- Сохранение/загрузка ----------
 
     def save_board(self):
-        data = self.get_board_data()
+        data = self._build_workspace_data(mark_saved=True)
         target_path = self.last_save_path
         if target_path:
             saved = file_io.save_board_to_path(data, target_path)
@@ -3562,7 +3610,13 @@ class BoardApp:
             self.last_save_path = target_path
             self.last_save_path_store.set_last_save_path(target_path)
             self.update_save_button_hint()
-            self._set_saved_history_index(self.history.index)
+            if (
+                self.active_board_index is not None
+                and self.active_board_index < len(self.boards)
+            ):
+                self.saved_history_index = self.boards[
+                    self.active_board_index
+                ].saved_history_index
             self.update_unsaved_flag()
 
     def load_board(self):
@@ -3570,13 +3624,9 @@ class BoardApp:
         if data is None:
             return
 
-        self.set_board_from_data(data)
-        state = self.get_board_data()
-        self.history.clear_and_init(state)
-        self.push_history()
-        self._set_saved_history_index(self.history.index)
+        self._apply_workspace_data(data, use_saved_indexes=True)
         self.update_unsaved_flag()
-        self.write_autosave(state)
+        self.write_autosave()
         self.update_minimap()
 
     # ---------- Экспорт в PNG (как было раньше) ----------
