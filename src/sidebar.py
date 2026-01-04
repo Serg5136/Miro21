@@ -144,7 +144,13 @@ class SidebarFactory:
         btn_save = tk.Button(file_content, text="Сохранить...",
                              command=app.save_board)
         btn_save.pack(fill="x", padx=10, pady=5)
-        add_tooltip(btn_save, "Сохранить текущую доску в файл")
+        app.btn_save = btn_save
+        tooltip_text = getattr(
+            app,
+            "get_save_tooltip_text",
+            lambda: "Сохранить текущую доску в файл",
+        )()
+        app.save_tooltip = add_tooltip(btn_save, tooltip_text)
 
         btn_load = tk.Button(file_content, text="Загрузить...",
                              command=app.load_board)

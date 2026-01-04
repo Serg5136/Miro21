@@ -30,6 +30,7 @@ from . import files as file_io
 from .history import History
 from .layout import LayoutBuilder
 from .selection_controller import SelectionController
+from .state import LastSavePathStore
 
 
 @dataclass
@@ -129,6 +130,8 @@ class BoardApp:
         self.saved_history_index = -1
         self.unsaved_changes = False
         self.autosave_service = AutoSaveService()
+        self.last_save_path_store = LastSavePathStore()
+        self.last_save_path = self.last_save_path_store.last_save_path
         self.board_name_pattern = re.compile(r"^[\w\dА-Яа-яЁё _.,'’()-]+$")
 
         # Буфер обмена (копирование карточек)
@@ -183,6 +186,7 @@ class BoardApp:
         self._setup_dnd()
         self.bootstrap_boards()
         self.update_controls_state()
+        self.update_save_button_hint()
 
         # Обработчик закрытия окна
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -3545,7 +3549,19 @@ class BoardApp:
 
     def save_board(self):
         data = self.get_board_data()
-        if file_io.save_board(data):
+        target_path = self.last_save_path
+        if target_path:
+            saved = file_io.save_board_to_path(data, target_path)
+        else:
+            target_path = file_io.ask_board_save_filename()
+            if not target_path:
+                return
+            saved = file_io.save_board_to_path(data, target_path)
+
+        if saved:
+            self.last_save_path = target_path
+            self.last_save_path_store.set_last_save_path(target_path)
+            self.update_save_button_hint()
             self._set_saved_history_index(self.history.index)
             self.update_unsaved_flag()
 
@@ -3625,6 +3641,19 @@ class BoardApp:
         self._apply_theme()
         self._redraw_with_current_theme()
         save_theme_settings(self.theme_name, self.text_colors, self.show_grid)
+
+    def get_save_tooltip_text(self) -> str:
+        if self.last_save_path:
+            filename = Path(self.last_save_path).name
+            return (
+                f"Сохранить изменения в «{filename}» без выбора файла. "
+                "Используйте другой путь через первую запись."
+            )
+        return "Сохранить текущую доску в файл (первый вызов предложит выбрать путь)"
+
+    def update_save_button_hint(self):
+        if hasattr(self, "save_tooltip") and self.save_tooltip:
+            self.save_tooltip.text = self.get_save_tooltip_text()
 
     # ---------- Закрытие ----------
 

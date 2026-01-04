@@ -18,19 +18,18 @@ class BoardFileError(Exception):
 REQUIRED_KEYS = ("cards", "connections", "frames")
 
 
-def save_board(board_data: Dict[str, Any]) -> bool:
-    """Открывает диалог и сохраняет данные борда в JSON.
-
-    Возвращает ``True`` при успешном сохранении и ``False`` если пользователь
-    отменил диалог или произошла ошибка.
-    """
+def ask_board_save_filename() -> str | None:
+    """Открывает диалог выбора файла и возвращает путь или ``None``."""
 
     filename = filedialog.asksaveasfilename(
         defaultextension=".json",
         filetypes=[("JSON файлы", "*.json"), ("Все файлы", "*.*")],
     )
-    if not filename:
-        return False
+    return filename or None
+
+
+def save_board_to_path(board_data: Dict[str, Any], filename: str) -> bool:
+    """Сохраняет данные борда в указанный файл без показа диалогов."""
 
     try:
         with open(filename, "w", encoding="utf-8") as f:
@@ -39,6 +38,20 @@ def save_board(board_data: Dict[str, Any]) -> bool:
     except OSError as e:
         messagebox.showerror("Ошибка сохранения", f"Не удалось сохранить файл:\n{e}")
         return False
+
+
+def save_board(board_data: Dict[str, Any]) -> bool:
+    """Открывает диалог и сохраняет данные борда в JSON.
+
+    Возвращает ``True`` при успешном сохранении и ``False`` если пользователь
+    отменил диалог или произошла ошибка.
+    """
+
+    filename = ask_board_save_filename()
+    if not filename:
+        return False
+
+    return save_board_to_path(board_data, filename)
 
 
 def load_board() -> Dict[str, Any] | None:
