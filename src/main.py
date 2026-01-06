@@ -968,7 +968,7 @@ class BoardApp:
             "<Escape>",
             lambda event: self._handle_board_tab_editor_key(event, save=False),
         )
-        entry.bind("<FocusOut>", lambda event: self.finish_edit_board_tab(save=False))
+        entry.bind("<FocusOut>", lambda event: self.finish_edit_board_tab(save=True))
         entry.pack(fill="x", padx=4, pady=2)
         entry.focus_set()
         entry.select_range(0, tk.END)
