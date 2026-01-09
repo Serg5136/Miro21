@@ -167,10 +167,13 @@ class SidebarFactory:
         btn_attach_image.pack(fill="x", padx=10, pady=5)
         add_tooltip(btn_attach_image, "Добавить изображение к выделенной карточке")
 
-        app.btn_theme = tk.Button(other_sections, text=app.get_theme_button_text(),
-                                   command=app.toggle_theme)
-        app.btn_theme.pack(fill="x", padx=10, pady=5)
-        add_tooltip(app.btn_theme, "Переключить светлую/тёмную тему")
+        btn_save_as = tk.Button(
+            other_sections,
+            text="Сохранить как",
+            command=app.save_board_as,
+        )
+        btn_save_as.pack(fill="x", padx=10, pady=5)
+        add_tooltip(btn_save_as, "Сохранить текущую доску в новый файл")
 
         tk.Label(other_sections, text="Сетка", bg="#f0f0f0",
                  font=("Arial", 12, "bold")).pack(pady=(20, 5))

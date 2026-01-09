@@ -3619,6 +3619,25 @@ class BoardApp:
                 ].saved_history_index
             self.update_unsaved_flag()
 
+    def save_board_as(self):
+        data = self._build_workspace_data(mark_saved=True)
+        target_path = file_io.ask_board_save_filename()
+        if not target_path:
+            return
+        saved = file_io.save_board_to_path(data, target_path)
+        if saved:
+            self.last_save_path = target_path
+            self.last_save_path_store.set_last_save_path(target_path)
+            self.update_save_button_hint()
+            if (
+                self.active_board_index is not None
+                and self.active_board_index < len(self.boards)
+            ):
+                self.saved_history_index = self.boards[
+                    self.active_board_index
+                ].saved_history_index
+            self.update_unsaved_flag()
+
     def load_board(self):
         data = file_io.load_board()
         if data is None:
